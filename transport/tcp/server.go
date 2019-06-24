@@ -7,32 +7,23 @@ import (
 	"sync"
 )
 
-var defaultServerOptions = tcpOptions{}
-
 type Server struct {
-	opts          *tcpOptions
-	closeC        chan struct{}
-	activeChannel map[channel.Channel]struct{}
-	lis           *net.TCPListener
-	mu            sync.Mutex
-	wg            sync.WaitGroup
+	closeC   chan struct{}
+	lis      *net.TCPListener
+	channels sync.Map
+	wg       sync.WaitGroup
+	opts     []Option
 }
 
-func NewServer(opt ...Option) *Server {
-	opts := defaultServerOptions
-	for _, o := range opt {
-		o.apply(&opts)
-	}
-
+func NewServer(opts ...Option) *Server {
 	return &Server{
-		opts:          &opts,
-		closeC:        make(chan struct{}, 1),
-		activeChannel: make(map[channel.Channel]struct{}),
+		opts:   opts,
+		closeC: make(chan struct{}, 1),
 	}
 }
 
-func (srv *Server) Serve(network, addr string) error {
-	laddr, err := net.ResolveTCPAddr(network, addr)
+func (srv *Server) Serve(network, localAddr string) error {
+	laddr, err := net.ResolveTCPAddr(network, localAddr)
 	if err != nil {
 		return err
 	}
@@ -46,7 +37,7 @@ func (srv *Server) Serve(network, addr string) error {
 	logger.Infof("server listening on %v", lis.Addr())
 
 	for {
-		tcpConn, err := lis.AcceptTCP()
+		rwc, err := lis.AcceptTCP()
 		if err != nil {
 			select {
 			case <-srv.closeC:
@@ -56,53 +47,41 @@ func (srv *Server) Serve(network, addr string) error {
 			}
 		}
 
-		applyOptions(srv.opts, tcpConn)
+		ch := newChannel(rwc)
 
-		ch := newChannel(tcpConn)
+		if err := applyOptions(srv.opts, ch); err != nil {
+			logger.Errorf("apply options to channel failed: %v", err)
+			_ = ch.Close()
+			continue
+		}
 
-		srv.opts.initializer(ch)
-
-		srv.wg.Add(1)
 		go func() {
-			// ch.Serve will blocked until ch closed
-			<-ch.Serve()
+			srv.wg.Add(1)
+			defer srv.wg.Done()
 
-			// delete ch from channel map
-			srv.mu.Lock()
-			delete(srv.activeChannel, ch)
-			srv.mu.Unlock()
+			srv.channels.Store(ch, struct{}{})
+			defer srv.channels.Delete(ch)
 
-			srv.wg.Done()
+			if err := <-ch.Serve(); err != nil {
+				logger.Errorf("close channel: %v", err)
+			}
 		}()
 	}
-
 }
 
 func (srv *Server) Shutdown() {
 	srv.closeC <- struct{}{}
-	srv.lis.Close()
 
-	go func() {
-		srv.mu.Lock()
-		for ch := range srv.activeChannel {
-			ch.Close()
-		}
-		srv.mu.Unlock()
-	}()
+	if err := srv.lis.Close(); err != nil {
+		logger.Errorf("close server listener: %v", err)
+	}
+
+	srv.channels.Range(func(key, value interface{}) bool {
+		_ = key.(channel.Channel).Close()
+		return true
+	})
 
 	srv.wg.Wait()
 
 	close(srv.closeC)
-}
-
-func applyOptions(options *tcpOptions, conn *net.TCPConn) {
-	conn.SetKeepAlive(options.keepalive)
-	conn.SetKeepAlivePeriod(options.keepalivePeriod)
-	conn.SetNoDelay(options.noDelay)
-	conn.SetLinger(options.linger)
-	conn.SetWriteBuffer(options.writeBufferSize)
-	conn.SetReadBuffer(options.readBufferSize)
-	conn.SetDeadline(options.deadline)
-	conn.SetWriteDeadline(options.writeDeadline)
-	conn.SetReadDeadline(options.readDeadline)
 }

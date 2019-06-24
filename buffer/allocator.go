@@ -10,13 +10,13 @@ const (
 	IndexDecrement = 1
 )
 
-var sizeTable = [27]int{
+var sizeTable = [27]int64{
 	0x00010, 0x00020, 0x00030, 0x00040, 0x00050, 0x00060, 0x00070, 0x00080, 0x00090,
 	0x00100, 0x00110, 0x00120, 0x00130, 0x00140, 0x00150, 0x00160, 0x00170, 0x00180,
 	0x00190, 0x00200, 0x00400, 0x00800, 0x01000, 0x02000, 0x04000, 0x08000, 0x10000,
 }
 
-func getSizeTableIndex(size int) int {
+func getSizeTableIndex(size int64) int {
 	for low, high := 0, len(sizeTable)-1; ; {
 		if high < low {
 			return low
@@ -43,12 +43,12 @@ func getSizeTableIndex(size int) int {
 }
 
 type RecvByteBufAllocator struct {
-	nextRecvBufferSize        int
+	nextRecvBufferSize        int64
 	index, minIndex, maxIndex int
 	decreaseNow               bool
 }
 
-func NewRecvByteBufAllocator(minimum, maximum, initial int) *RecvByteBufAllocator {
+func NewRecvByteBufAllocator(minimum, maximum, initial int64) *RecvByteBufAllocator {
 	var minIndex, maxIndex int
 
 	min := getSizeTableIndex(minimum)
@@ -80,7 +80,7 @@ func (r *RecvByteBufAllocator) Allocate() ByteBuffer {
 	return NewByteBuf(buf)
 }
 
-func (r *RecvByteBufAllocator) Record(readBytes int) {
+func (r *RecvByteBufAllocator) Record(readBytes int64) {
 	if readBytes <= sizeTable[mathutil.Max(0, r.index-IndexDecrement-1)] {
 		if r.decreaseNow {
 			r.index = mathutil.Max(r.index-IndexDecrement, r.minIndex)

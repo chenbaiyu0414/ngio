@@ -2,6 +2,7 @@ package buffer
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"ngio/buffer/internal/byteutil"
 )
@@ -81,6 +82,7 @@ type ByteBuffer interface {
 	WriteFloat64LE(v float64)
 	WriteBytes(buffer []byte)
 	WriteSlice(buffer ByteBuffer)
+	io.WriterTo
 
 	ReadByte() byte
 	ReadInt8() int8
@@ -104,6 +106,7 @@ type ByteBuffer interface {
 	ReadFloat64LE() float64
 	ReadBytes(length int) []byte
 	ReadSlice(length int) ByteBuffer
+	io.ReaderFrom
 
 	GetByte(index int) byte
 	GetInt8(index int) int8
@@ -379,6 +382,30 @@ func (bf *ByteBuf) WriteSlice(buffer ByteBuffer) {
 	bf.WriteBytes(buffer.GetBytes(buffer.ReaderIndex(), buffer.ReadableBytes()))
 }
 
+// WriteTo writes all readable bytes into io.Writer. It returns the number of bytes written.
+// And the reader index will increased n.
+func (bf *ByteBuf) WriteTo(w io.Writer) (n int64, err error) {
+	if readable := bf.ReadableBytes(); readable > 0 {
+		n, err := w.Write(bf.buf[bf.r:bf.w])
+		if n > readable {
+			panic("buffer.ByteBuf.WriteTo: invalid write count")
+		}
+
+		bf.r += n
+
+		if err != nil {
+			return int64(n), err
+		}
+
+		if n != readable {
+			return int64(n), io.ErrShortWrite
+		}
+	}
+
+	bf.DiscardReadBytes()
+	return n, nil
+}
+
 func (bf *ByteBuf) ReadByte() (v byte) {
 	bf.checkReadableBytes(SizeByte)
 	v = bf.buf[bf.r]
@@ -529,6 +556,20 @@ func (bf *ByteBuf) ReadBytes(length int) (v []byte) {
 func (bf *ByteBuf) ReadSlice(length int) (v ByteBuffer) {
 	v = newByteBuf(bf.ReadBytes(length), 0, 0)
 	return
+}
+
+// ReadFrom reads bytes from io.Reader into underlying buf. It returns the number of bytes read.
+// And the writer index will increased n.
+func (bf *ByteBuf) ReadFrom(r io.Reader) (int64, error) {
+	writable := bf.WritableBytes()
+	if writable == 0 {
+		// grow buffer
+		bf.grow(calculateNewCapacity(bf.cap, bf.cap))
+	}
+
+	n, err := r.Read(bf.buf[bf.w:bf.cap])
+	bf.w += n
+	return int64(n), err
 }
 
 func (bf *ByteBuf) GetByte(index int) byte {

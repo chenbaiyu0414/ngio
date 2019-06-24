@@ -12,7 +12,7 @@ type Channel interface {
 	LocalAddress() net.Addr
 	RemoteAddress() net.Addr
 	Attributes() Attributes
-	Serve() <-chan struct{}
+	Serve() <-chan error
 	Write(msg interface{})
 	Close() error
 }

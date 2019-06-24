@@ -16,7 +16,7 @@ func TestNewServerAndServe(t *testing.T) {
 		WithNoDelay(true),
 		WithKeepAlive(true),
 		WithInitializer(func(ch channel.Channel) {
-			ch.Pipeline().Append(codec.NewByteToMessageDecoderWrapper(codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
+			ch.Pipeline().Append(codec.NewByteToMessageDecoderAdapter(codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
 			ch.Pipeline().Append(&handler{})
 		}))
 
@@ -32,6 +32,29 @@ func TestNewServerAndServe(t *testing.T) {
 	<-ch
 
 	srv.Shutdown()
+}
+
+func TestNewClient(t *testing.T) {
+	clt, err := Dial("tcp4", "", "localhost:9864",
+		WithNoDelay(true),
+		WithKeepAlive(true),
+		WithInitializer(func(ch channel.Channel) {
+			ch.Pipeline().Append(codec.NewByteToMessageDecoderAdapter(codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
+			ch.Pipeline().Append(&handler{})
+		}))
+
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	ch := make(chan os.Signal)
+	signal.Notify(ch, os.Kill, os.Interrupt)
+	<-ch
+
+	if err := clt.Close(); err != nil {
+		t.Error(err)
+	}
 }
 
 type handler struct {
