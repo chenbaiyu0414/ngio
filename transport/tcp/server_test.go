@@ -2,8 +2,8 @@ package tcp
 
 import (
 	"math"
+	"ngio"
 	"ngio/buffer"
-	"ngio/channel"
 	"ngio/codec"
 	"ngio/internal/logger"
 	"os"
@@ -15,7 +15,7 @@ func TestNewServerAndServe(t *testing.T) {
 	srv := NewServer(
 		WithNoDelay(true),
 		WithKeepAlive(true),
-		WithInitializer(func(ch channel.Channel) {
+		WithInitializer(func(ch ngio.Channel) {
 			ch.Pipeline().Append(codec.NewByteToMessageDecoderAdapter(codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
 			ch.Pipeline().Append(&handler{})
 		}))
@@ -38,7 +38,7 @@ func TestNewClient(t *testing.T) {
 	clt, err := Dial("tcp4", "", "localhost:9864",
 		WithNoDelay(true),
 		WithKeepAlive(true),
-		WithInitializer(func(ch channel.Channel) {
+		WithInitializer(func(ch ngio.Channel) {
 			ch.Pipeline().Append(codec.NewByteToMessageDecoderAdapter(codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
 			ch.Pipeline().Append(&handler{})
 		}))
@@ -60,7 +60,7 @@ func TestNewClient(t *testing.T) {
 type handler struct {
 }
 
-func (*handler) ChannelRead(ctx channel.Context, msg interface{}) {
+func (*handler) ChannelRead(ctx ngio.Context, msg interface{}) {
 	r, ok := msg.(buffer.ByteBuffer)
 	if !ok {
 		logger.Errorf("msg is not buffer.ByteBuffer")
@@ -77,10 +77,10 @@ func (*handler) ChannelRead(ctx channel.Context, msg interface{}) {
 	ctx.Write(b)
 }
 
-func (*handler) ChannelInActive(ctx channel.Context) {
+func (*handler) ChannelInActive(ctx ngio.Context) {
 	logger.Infof("inactive")
 }
 
-func (*handler) ChannelActive(ctx channel.Context) {
+func (*handler) ChannelActive(ctx ngio.Context) {
 	logger.Infof("active")
 }

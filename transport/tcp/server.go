@@ -2,7 +2,7 @@ package tcp
 
 import (
 	"net"
-	"ngio/channel"
+	"ngio"
 	"ngio/internal/logger"
 	"sync"
 )
@@ -51,7 +51,7 @@ func (srv *Server) Serve(network, localAddr string) error {
 
 		if err := applyOptions(srv.opts, ch); err != nil {
 			logger.Errorf("apply options to channel failed: %v", err)
-			_ = ch.Close()
+			ch.Close()
 			continue
 		}
 
@@ -77,7 +77,12 @@ func (srv *Server) Shutdown() {
 	}
 
 	srv.channels.Range(func(key, value interface{}) bool {
-		_ = key.(channel.Channel).Close()
+		ch := key.(ngio.Channel)
+
+		if ch.IsActive() {
+			ch.Close()
+		}
+
 		return true
 	})
 

@@ -386,19 +386,19 @@ func (bf *ByteBuf) WriteSlice(buffer ByteBuffer) {
 // And the reader index will increased n.
 func (bf *ByteBuf) WriteTo(w io.Writer) (n int64, err error) {
 	if readable := bf.ReadableBytes(); readable > 0 {
-		n, err := w.Write(bf.buf[bf.r:bf.w])
-		if n > readable {
+		m, e := w.Write(bf.buf[bf.r:bf.w])
+		if m > readable {
 			panic("buffer.ByteBuf.WriteTo: invalid write count")
 		}
 
-		bf.r += n
-
-		if err != nil {
-			return int64(n), err
+		bf.r += m
+		n = int64(m)
+		if e != nil {
+			return n, e
 		}
 
-		if n != readable {
-			return int64(n), io.ErrShortWrite
+		if m != readable {
+			return n, io.ErrShortWrite
 		}
 	}
 
@@ -554,7 +554,7 @@ func (bf *ByteBuf) ReadBytes(length int) (v []byte) {
 }
 
 func (bf *ByteBuf) ReadSlice(length int) (v ByteBuffer) {
-	v = newByteBuf(bf.ReadBytes(length), 0, 0)
+	v = newByteBuf(bf.ReadBytes(length), 0, length)
 	return
 }
 

@@ -22,26 +22,33 @@ func Dial(network, localAddr, remoteAddr string, opts ...Option) (clt *Client, e
 	}
 
 	clt = &Client{
-		ch: newChannel(rwc),
+		ch:    newChannel(rwc),
+		quitC: make(chan error, 1),
 	}
 
 	if err = applyOptions(opts, clt.ch); err != nil {
 		logger.Errorf("apply options to channel failed: %v", err)
-		_ = clt.ch.Close()
+		clt.ch.Close()
 		return
 	}
 
 	go func() {
-		<-clt.ch.Serve()
+		clt.quitC <- <-clt.ch.Serve()
 	}()
 
 	return
 }
 
 type Client struct {
-	ch *tcpChannel
+	ch    *channel
+	quitC chan error
 }
 
 func (clt *Client) Close() error {
-	return clt.ch.Close()
+	if !clt.ch.IsActive() {
+		return nil
+	}
+
+	clt.ch.Close()
+	return <-clt.quitC
 }

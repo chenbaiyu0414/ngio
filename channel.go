@@ -1,10 +1,10 @@
-package channel
+package ngio
 
 import (
 	"net"
 )
 
-type Initializer func(ch Channel)
+type Initializer func(Channel)
 
 type Channel interface {
 	IsActive() bool
@@ -14,5 +14,5 @@ type Channel interface {
 	Attributes() Attributes
 	Serve() <-chan error
 	Write(msg interface{})
-	Close() error
+	Close()
 }

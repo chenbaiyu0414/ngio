@@ -3,8 +3,8 @@ package codec
 import (
 	"bytes"
 	"fmt"
+	"ngio"
 	"ngio/buffer"
-	"ngio/channel"
 )
 
 type DelimiterBasedFrameDecoder struct {
@@ -21,7 +21,7 @@ func NewDelimiterBasedFrameDecoder(maxLength int, stripDelimiter bool, delimiter
 	}
 }
 
-func (decoder *DelimiterBasedFrameDecoder) Decode(ctx channel.Context, in buffer.ByteBuffer) (out interface{}) {
+func (decoder *DelimiterBasedFrameDecoder) Decode(ctx ngio.Context, in buffer.ByteBuffer) (out interface{}) {
 	minLength := decoder.maxLength
 	shortestDelimLength := 0
 

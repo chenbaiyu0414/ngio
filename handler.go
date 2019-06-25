@@ -1,4 +1,4 @@
-package channel
+package ngio
 
 type Flag int
 
@@ -50,7 +50,9 @@ type HandlerWrapper struct {
 }
 
 func NewHandlerWrapper(handler interface{}) *HandlerWrapper {
-	wrapper := new(HandlerWrapper)
+	wrapper := &HandlerWrapper{
+		flag: None,
+	}
 
 	if h, ok := handler.(ActiveHandler); ok {
 		wrapper.activeHandler = h

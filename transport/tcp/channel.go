@@ -1,48 +1,49 @@
 package tcp
 
 import (
+	"io"
 	"net"
+	"ngio"
 	"ngio/buffer"
-	"ngio/channel"
 	"sync"
 )
 
-// tcpChannel is a connection between server and client
-type tcpChannel struct {
+// channel is a connection between server and client
+type channel struct {
 	isActive      bool
 	rwc           *net.TCPConn
 	closeC        chan struct{}
 	quitC         chan error
 	writeC        chan buffer.ByteBuffer
 	wg            sync.WaitGroup
-	pipeline      *channel.Pipeline
+	pipeline      *ngio.Pipeline
 	recvAllocator *buffer.RecvByteBufAllocator
-	attributes    channel.Attributes
+	attributes    ngio.Attributes
 }
 
-func newChannel(rwc *net.TCPConn) *tcpChannel {
-	c := &tcpChannel{
+func newChannel(rwc *net.TCPConn) *channel {
+	ch := &channel{
 		rwc:           rwc,
-		closeC:        make(chan struct{}, 1),
+		closeC:        make(chan struct{}),
 		quitC:         make(chan error, 1),
 		writeC:        make(chan buffer.ByteBuffer, 16),
 		recvAllocator: buffer.NewRecvByteBufAllocator(buffer.DefaultMinimum, buffer.DefaultMaximum, buffer.DefaultInitial),
-		attributes:    channel.NewDefaultAttributes(),
+		attributes:    ngio.NewDefaultAttributes(),
 	}
 
-	c.pipeline = channel.NewPipeline(c)
-	return c
+	ch.pipeline = ngio.NewPipeline(ch)
+	return ch
 }
 
-func (ch *tcpChannel) IsActive() bool {
+func (ch *channel) IsActive() bool {
 	return ch.isActive
 }
 
-func (ch *tcpChannel) Pipeline() *channel.Pipeline {
+func (ch *channel) Pipeline() *ngio.Pipeline {
 	return ch.pipeline
 }
 
-func (ch *tcpChannel) LocalAddress() net.Addr {
+func (ch *channel) LocalAddress() net.Addr {
 	if ch.rwc == nil {
 		return nil
 	}
@@ -50,7 +51,7 @@ func (ch *tcpChannel) LocalAddress() net.Addr {
 	return ch.rwc.LocalAddr()
 }
 
-func (ch *tcpChannel) RemoteAddress() net.Addr {
+func (ch *channel) RemoteAddress() net.Addr {
 	if ch.rwc == nil {
 		return nil
 	}
@@ -58,11 +59,11 @@ func (ch *tcpChannel) RemoteAddress() net.Addr {
 	return ch.rwc.RemoteAddr()
 }
 
-func (ch *tcpChannel) Attributes() channel.Attributes {
+func (ch *channel) Attributes() ngio.Attributes {
 	return ch.attributes
 }
 
-func (ch *tcpChannel) Serve() <-chan error {
+func (ch *channel) Serve() <-chan error {
 	go ch.read()
 	go ch.write()
 
@@ -72,7 +73,7 @@ func (ch *tcpChannel) Serve() <-chan error {
 	return ch.quitC
 }
 
-func (ch *tcpChannel) read() {
+func (ch *channel) read() {
 	ch.wg.Add(1)
 	defer ch.wg.Done()
 
@@ -84,18 +85,22 @@ func (ch *tcpChannel) read() {
 			buf := ch.recvAllocator.Allocate()
 			n, err := buf.ReadFrom(ch.rwc)
 
-			if err != nil {
-				_ = ch.Close()
-				return
+			if err == nil {
+				ch.recvAllocator.Record(n)
+				ch.pipeline.FireReadHandler(buf)
+				continue
 			}
 
-			ch.recvAllocator.Record(n)
-			ch.pipeline.FireReadHandler(buf)
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				ch.Close()
+			}
+
+			return
 		}
 	}
 }
 
-func (ch *tcpChannel) write() {
+func (ch *channel) write() {
 	ch.wg.Add(1)
 	defer ch.wg.Done()
 
@@ -110,19 +115,23 @@ func (ch *tcpChannel) write() {
 				for unwritten > 0 {
 					n, err := buf.WriteTo(ch.rwc)
 
-					if err != nil {
-						_ = ch.Close()
-						return
+					if err == nil {
+						unwritten -= n
+						continue
 					}
 
-					unwritten -= n
+					if err == io.EOF || err == io.ErrUnexpectedEOF {
+						ch.Close()
+					}
+
+					return
 				}
 			}
 		}
 	}
 }
 
-func (ch *tcpChannel) Write(msg interface{}) {
+func (ch *channel) Write(msg interface{}) {
 	if !ch.isActive {
 		return
 	}
@@ -132,18 +141,23 @@ func (ch *tcpChannel) Write(msg interface{}) {
 	}
 }
 
-func (ch *tcpChannel) Close() error {
+func (ch *channel) Close() {
+	if !ch.isActive {
+		return
+	}
+
 	ch.isActive = false
 	ch.pipeline.FireInActiveHandler()
 
-	ch.closeC <- struct{}{}
-	ch.wg.Wait()
+	go func() {
+		// broadcast close signal
+		close(ch.closeC)
+		close(ch.writeC)
 
-	close(ch.closeC)
-	close(ch.writeC)
+		err := ch.rwc.Close()
 
-	err := ch.rwc.Close()
-	ch.quitC <- err
+		ch.wg.Wait()
 
-	return err
+		ch.quitC <- err
+	}()
 }
