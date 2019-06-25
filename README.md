@@ -42,9 +42,9 @@ func main() {
 		}
 	}()
 
-	ch := make(chan os.Signal)
-	signal.Notify(ch, os.Kill, os.Interrupt)
-	<-ch
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Kill, os.Interrupt)
+	<-c
 
 	srv.Shutdown()
 }
@@ -68,9 +68,9 @@ func main() {
 		panic(err)
 	}
 
-	ch := make(chan os.Signal)
-	signal.Notify(ch, os.Kill, os.Interrupt)
-	<-ch
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Kill, os.Interrupt)
+	<-c
 
 	if err := client.Close(); err != nil {
 		logger.Errorf("close client: %v", err)
