@@ -15,7 +15,7 @@
 - [x] LengthFieldBasedFrameDecoder
 - [x] LengthFieldPrepender
 - [x] LineBasedFrameDecoder
-- [ ] SSL/TLS
+- [x] SSL/TLS
 - [ ] HTTP
 - [ ] Protobuf
 - [ ] ......
