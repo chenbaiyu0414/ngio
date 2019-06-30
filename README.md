@@ -24,84 +24,129 @@
 ### Server
 
 ```go
+package main
+
+import (
+	"math"
+	"ngio"
+	"ngio/channel"
+	"ngio/codec"
+	"ngio/example/echo"
+	"ngio/option"
+	"os"
+	"os/signal"
+)
+
 func main() {
-	srv := tcp.NewServer(
-		tcp.WithNoDelay(true),
-		tcp.WithKeepAlive(true),
-		tcp.WithInitializer(func(ch ngio.Channel) {
-			ch.Pipeline().Append(codec.NewByteToMessageDecoderAdapter(
-				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
-
-			ch.Pipeline().Append(new(EchoHandler))
-		}))
-
-	go func() {
-		if err := srv.Serve("tcp4", "localhost:9863"); err != nil {
-			panic(err)
-			return
-		}
-	}()
-
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Kill, os.Interrupt)
-	<-c
-
-	srv.Shutdown()
+	srv := ngio.NewServer("tcp4", "localhost:9863").
+    		Option(option.TCPNoDelay(true)).
+    		Option(option.TCPKeepAlive(true)).
+    		Channel(func(ch channel.Channel) {
+    			ch.Pipeline().Append("decoder", codec.NewByteToMessageDecoderAdapter(
+    				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
+    
+    			ch.Pipeline().Append("handler", echo.NewHandler())
+    		})
+    
+    	go func() {
+    		if err := srv.Serve(); err != nil {
+    			panic(err)
+    			return
+    		}
+    	}()
+    
+    	ch := make(chan os.Signal)
+    	signal.Notify(ch, os.Kill, os.Interrupt)
+    	<-ch
+    
+    	srv.Shutdown()
 }
 ```
 
 ### Client
 
 ```go
+package main
+
+import (
+	"math"
+	"ngio"
+	"ngio/channel"
+	"ngio/codec"
+	"ngio/example/echo"
+	"ngio/option"
+	"os"
+	"os/signal"
+)
+
 func main() {
-	client, err := tcp.Dial("tcp4", "", "localhost:9863",
-		tcp.WithNoDelay(true),
-		tcp.WithKeepAlive(true),
-		tcp.WithInitializer(func(ch ngio.Channel) {
-			ch.Pipeline().Append(codec.NewByteToMessageDecoderAdapter(
+	clt := ngio.NewClient("tcp4", "", "localhost:9863").
+		Option(option.TCPNoDelay(true)).
+		Option(option.TCPKeepAlive(true)).
+		Channel(func(ch channel.Channel) {
+			ch.Pipeline().Append("encoder", codec.NewByteToMessageDecoderAdapter(
 				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
 
-			ch.Pipeline().Append(new(EchoHandler))
-		}))
+			ch.Pipeline().Append("handler", echo.NewHandler())
+		})
 
-	if err != nil {
-		panic(err)
-	}
+	go func() {
+		if err := clt.Dial(); err != nil {
+			panic(err)
+			return
+		}
+	}()
 
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Kill, os.Interrupt)
-	<-c
+	ch := make(chan os.Signal)
+	signal.Notify(ch, os.Kill, os.Interrupt)
+	<-ch
 
-	if err := client.Close(); err != nil {
-		logger.Errorf("close client: %v", err)
-	}
+	clt.Close()
 }
+
 ```
 
 ### Handler
 
 ```go
-type EchoHandler struct {}
+package echo
 
-func (*EchoHandler) ChannelRead(ctx ngio.Context, msg interface{}) {
+import (
+	"ngio/buffer"
+	"ngio/channel"
+	"ngio/logger"
+)
+
+type Handler struct {
+	log logger.Logger
+}
+
+func NewHandler() *Handler {
+	return &Handler{
+		log: logger.DefaultLogger(),
+	}
+}
+
+func (handler *Handler) ChannelRead(ctx channel.Context, msg interface{}) {
 	bf, ok := msg.(buffer.ByteBuffer)
 	if !ok {
-		logger.Errorf("msg is not buffer.ByteBuffer")
+		handler.log.Errorf("msg is not buffer.ByteBuffer")
 		return
 	}
 
-	received := string(bf.GetBytes(bf.ReaderIndex(), bf.ReadableBytes()))
+	received := bf.GetBytes(bf.ReaderIndex(), bf.ReadableBytes())
 
-	logger.Infof("received: %s", received)
+	handler.log.Infof("received: %s", string(received))
 
 	ctx.Write(bf)
 }
 
-func (*EchoHandler) ChannelInActive(ctx ngio.Context) {
-	logger.Infof("inactive")
+func (handler *Handler) ChannelInActive(ctx channel.Context) {
+	handler.log.Infof("inactive")
 }
 
-func (*EchoHandler) ChannelActive(ctx ngio.Context) {
-	logger.Infof("active")
+func (handler *Handler) ChannelActive(ctx channel.Context) {
+	handler.log.Infof("active")
 }
+
 ```
