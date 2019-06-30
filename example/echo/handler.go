@@ -1,32 +1,39 @@
 package echo
 
 import (
-	"ngio"
 	"ngio/buffer"
-	"ngio/internal/logger"
+	"ngio/channel"
+	"ngio/logger"
 )
 
 type Handler struct {
+	log logger.Logger
 }
 
-func (*Handler) ChannelRead(ctx ngio.Context, msg interface{}) {
+func NewHandler() *Handler {
+	return &Handler{
+		log: logger.DefaultLogger(),
+	}
+}
+
+func (handler *Handler) ChannelRead(ctx channel.Context, msg interface{}) {
 	bf, ok := msg.(buffer.ByteBuffer)
 	if !ok {
-		logger.Errorf("msg is not buffer.ByteBuffer")
+		handler.log.Errorf("msg is not buffer.ByteBuffer")
 		return
 	}
 
 	received := bf.GetBytes(bf.ReaderIndex(), bf.ReadableBytes())
 
-	logger.Infof("received: %s", string(received))
+	handler.log.Infof("received: %s", string(received))
 
 	ctx.Write(bf)
 }
 
-func (*Handler) ChannelInActive(ctx ngio.Context) {
-	logger.Infof("inactive")
+func (handler *Handler) ChannelInActive(ctx channel.Context) {
+	handler.log.Infof("inactive")
 }
 
-func (*Handler) ChannelActive(ctx ngio.Context) {
-	logger.Infof("active")
+func (handler *Handler) ChannelActive(ctx channel.Context) {
+	handler.log.Infof("active")
 }

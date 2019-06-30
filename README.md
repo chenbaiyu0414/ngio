@@ -7,7 +7,7 @@
 # Features
 #### Socket
 - [x] TCP
-- [ ] UDP
+- [x] UDP
 - [ ] WebSocket
 
 #### Codec

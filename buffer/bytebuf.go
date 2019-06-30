@@ -169,19 +169,15 @@ type ByteBuf struct {
 	// buf read and write index, expect 0 <= r <= w <= len(buf)
 	r, w int
 
-	// marked read and writ index
+	// marked read and write index
 	mr, mw int
 }
 
 func NewByteBufSize(size int) *ByteBuf {
-	return NewByteBuf(make([]byte, size))
+	return NewByteBuf(make([]byte, size), 0, 0)
 }
 
-func NewByteBuf(buffer []byte) *ByteBuf {
-	return newByteBuf(buffer, 0, 0)
-}
-
-func newByteBuf(buffer []byte, r, w int) *ByteBuf {
+func NewByteBuf(buffer []byte, readerIndex, writerIndex int) *ByteBuf {
 	capacity := cap(buffer)
 
 	if capacity == 0 {
@@ -190,8 +186,8 @@ func newByteBuf(buffer []byte, r, w int) *ByteBuf {
 
 	return &ByteBuf{
 		buf: buffer,
-		r:   r,
-		w:   w,
+		r:   readerIndex,
+		w:   writerIndex,
 		cap: capacity,
 	}
 }
@@ -554,7 +550,7 @@ func (bf *ByteBuf) ReadBytes(length int) (v []byte) {
 }
 
 func (bf *ByteBuf) ReadSlice(length int) (v ByteBuffer) {
-	v = newByteBuf(bf.ReadBytes(length), 0, length)
+	v = NewByteBuf(bf.ReadBytes(length), 0, length)
 	return
 }
 

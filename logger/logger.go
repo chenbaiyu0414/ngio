@@ -46,11 +46,11 @@ type internalLogger struct {
 
 func NewInternalLogger(debugWriter, infoWriter, warnWriter, errorWriter, fatalWriter io.Writer) *internalLogger {
 	loggers := []*log.Logger{
-		log.New(debugWriter, prefixWithColor("[DEBUG] ", colorGreen), log.LstdFlags),
-		log.New(infoWriter, prefixWithColor("[INFO] ", colorBlue), log.LstdFlags),
-		log.New(warnWriter, prefixWithColor("[WARN] ", colorYellow), log.LstdFlags),
-		log.New(errorWriter, prefixWithColor("[ERROR] ", colorRed), log.LstdFlags),
-		log.New(fatalWriter, prefixWithColor("[FATAL] ", colorMagenta), log.LstdFlags),
+		log.New(debugWriter, prefixWithColor("[DEBUG]\t", colorGreen), log.LstdFlags|log.Lshortfile),
+		log.New(infoWriter, prefixWithColor("[INFO]\t", colorBlue), log.LstdFlags|log.Lshortfile),
+		log.New(warnWriter, prefixWithColor("[WARN]\t", colorYellow), log.LstdFlags|log.Lshortfile),
+		log.New(errorWriter, prefixWithColor("[ERROR]\t", colorRed), log.LstdFlags|log.Lshortfile),
+		log.New(fatalWriter, prefixWithColor("[FATAL]\t", colorMagenta), log.LstdFlags|log.Lshortfile),
 	}
 
 	return &internalLogger{loggers: loggers}
@@ -75,43 +75,45 @@ func newInternalLogger(level Level) *internalLogger {
 }
 
 func (il *internalLogger) Debug(v ...interface{}) {
-	il.loggers[LevelDebug].Print(v...)
+	il.loggers[LevelDebug].Output(2, fmt.Sprint(v...))
 }
 
 func (il *internalLogger) Debugf(format string, v ...interface{}) {
-	il.loggers[LevelDebug].Printf(format, v...)
+	il.loggers[LevelDebug].Output(2, fmt.Sprintf(format, v...))
 }
 
 func (il *internalLogger) Info(v ...interface{}) {
-	il.loggers[LevelInfo].Print(v...)
+	il.loggers[LevelInfo].Output(2, fmt.Sprint(v...))
 }
 
 func (il *internalLogger) Infof(format string, v ...interface{}) {
-	il.loggers[LevelInfo].Printf(format, v...)
+	il.loggers[LevelInfo].Output(2, fmt.Sprintf(format, v...))
 }
 
 func (il *internalLogger) Warn(v ...interface{}) {
-	il.loggers[LevelWarn].Print(v...)
+	il.loggers[LevelWarn].Output(2, fmt.Sprint(v...))
 }
 
 func (il *internalLogger) Warnf(format string, v ...interface{}) {
-	il.loggers[LevelWarn].Printf(format, v...)
+	il.loggers[LevelWarn].Output(2, fmt.Sprintf(format, v...))
 }
 
 func (il *internalLogger) Error(v ...interface{}) {
-	il.loggers[LevelError].Print(v...)
+	il.loggers[LevelError].Output(2, fmt.Sprint(v...))
 }
 
 func (il *internalLogger) Errorf(format string, v ...interface{}) {
-	il.loggers[LevelError].Printf(format, v...)
+	il.loggers[LevelError].Output(2, fmt.Sprintf(format, v...))
 }
 
 func (il *internalLogger) Fatal(v ...interface{}) {
-	il.loggers[LevelFatal].Fatal(v...)
+	il.loggers[LevelFatal].Output(2, fmt.Sprint(v...))
+	os.Exit(1)
 }
 
 func (il *internalLogger) Fatalf(format string, v ...interface{}) {
-	il.loggers[LevelFatal].Fatalf(format, v...)
+	il.loggers[LevelFatal].Output(2, fmt.Sprintf(format, v...))
+	os.Exit(1)
 }
 
 func prefixWithColor(prefix string, color int) string {

@@ -1,10 +1,11 @@
-package ngio
+package channel
 
 import (
+	"fmt"
 	"net"
 )
 
-type Initializer func(Channel)
+type Initializer func(ch Channel)
 
 type Channel interface {
 	IsActive() bool
@@ -12,7 +13,8 @@ type Channel interface {
 	LocalAddress() net.Addr
 	RemoteAddress() net.Addr
 	Attributes() Attributes
-	Serve() <-chan error
+	Serve() error
 	Write(msg interface{})
 	Close()
+	fmt.Stringer
 }

@@ -2,8 +2,8 @@ package codec
 
 import (
 	"fmt"
-	"ngio"
 	"ngio/buffer"
+	"ngio/channel"
 )
 
 type LengthFieldBasedFrameDecoder struct {
@@ -44,7 +44,7 @@ func NewLengthFieldBasedFrameDecoder(byteOrder buffer.ByteOrder, maxFrameLength 
 	}
 }
 
-func (decoder *LengthFieldBasedFrameDecoder) Decode(ctx ngio.Context, in buffer.ByteBuffer) interface{} {
+func (decoder *LengthFieldBasedFrameDecoder) Decode(ctx channel.Context, in buffer.ByteBuffer) interface{} {
 	if in.ReadableBytes() < decoder.lengthFieldEndOffset {
 		return nil
 	}

@@ -1,4 +1,4 @@
-package ngio
+package channel
 
 import "sync"
 

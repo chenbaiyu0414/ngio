@@ -10,13 +10,13 @@ const (
 	IndexDecrement = 1
 )
 
-var sizeTable = [27]int64{
+var sizeTable = [27]int{
 	0x00010, 0x00020, 0x00030, 0x00040, 0x00050, 0x00060, 0x00070, 0x00080, 0x00090,
 	0x00100, 0x00110, 0x00120, 0x00130, 0x00140, 0x00150, 0x00160, 0x00170, 0x00180,
 	0x00190, 0x00200, 0x00400, 0x00800, 0x01000, 0x02000, 0x04000, 0x08000, 0x10000,
 }
 
-func getSizeTableIndex(size int64) int {
+func getSizeTableIndex(size int) int {
 	for low, high := 0, len(sizeTable)-1; ; {
 		if high < low {
 			return low
@@ -43,12 +43,12 @@ func getSizeTableIndex(size int64) int {
 }
 
 type RecvByteBufAllocator struct {
-	nextRecvBufferSize        int64
+	nextRecvBufferSize        int
 	index, minIndex, maxIndex int
 	decreaseNow               bool
 }
 
-func NewRecvByteBufAllocator(minimum, maximum, initial int64) *RecvByteBufAllocator {
+func NewRecvByteBufAllocator(minimum, maximum, initial int) *RecvByteBufAllocator {
 	var minIndex, maxIndex int
 
 	min := getSizeTableIndex(minimum)
@@ -77,10 +77,10 @@ func NewRecvByteBufAllocator(minimum, maximum, initial int64) *RecvByteBufAlloca
 
 func (r *RecvByteBufAllocator) Allocate() ByteBuffer {
 	buf := make([]byte, r.nextRecvBufferSize)
-	return NewByteBuf(buf)
+	return NewByteBuf(buf, 0, 0)
 }
 
-func (r *RecvByteBufAllocator) Record(readBytes int64) {
+func (r *RecvByteBufAllocator) Record(readBytes int) {
 	if readBytes <= sizeTable[mathutil.Max(0, r.index-IndexDecrement-1)] {
 		if r.decreaseNow {
 			r.index = mathutil.Max(r.index-IndexDecrement, r.minIndex)

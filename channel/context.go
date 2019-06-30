@@ -1,8 +1,9 @@
-package ngio
+package channel
 
 import (
+	"bytes"
 	"fmt"
-	"ngio/internal/logger"
+	"ngio/logger"
 )
 
 type Context interface {
@@ -17,30 +18,36 @@ type Context interface {
 	SetPrev(prev Context)
 	Pipeline() *Pipeline
 	Handler() Handler
+	Name() string
+	fmt.Stringer
 }
 
 type DefaultContext struct {
+	name       string
 	next, prev Context
 	pipeline   *Pipeline
 	handler    Handler
 	flag       Flag
+	log        logger.Logger
 }
 
-func NewDefaultContext(pipeline *Pipeline, handler interface{}) *DefaultContext {
+func NewDefaultContext(pipeline *Pipeline, name string, handler interface{}) *DefaultContext {
 	if handler == nil {
 		panic("handler is nil")
 	}
 
 	return &DefaultContext{
+		name:     name,
 		pipeline: pipeline,
-		handler:  NewHandlerWrapper(handler),
+		handler:  NewHandlerAdapter(name, handler),
+		log:      logger.DefaultLogger(),
 	}
 }
 
 func (ctx *DefaultContext) FireActiveHandler() {
 	if c := findInboundContext(ctx, Active); c != nil {
 		try(c, func() {
-			logger.Debugf("channel[%v] is active", c.Pipeline().Channel().RemoteAddress())
+			ctx.log.Debugf("[%v] => [%v] fire active", ctx, c)
 			c.Handler().ChannelActive(c)
 		})
 	}
@@ -49,7 +56,7 @@ func (ctx *DefaultContext) FireActiveHandler() {
 func (ctx *DefaultContext) FireInActiveHandler() {
 	if c := findInboundContext(ctx, InActive); c != nil {
 		try(c, func() {
-			logger.Debugf("channel[%v] is active", c.Pipeline().Channel().RemoteAddress())
+			ctx.log.Debugf("[%v] => [%v] fire inactive", ctx, c)
 			c.Handler().ChannelInActive(c)
 		})
 	}
@@ -58,6 +65,7 @@ func (ctx *DefaultContext) FireInActiveHandler() {
 func (ctx *DefaultContext) FireReadHandler(msg interface{}) {
 	if c := findInboundContext(ctx, Read); c != nil {
 		try(c, func() {
+			ctx.log.Debugf("[%v] => [%v] fire read", ctx, c)
 			c.Handler().ChannelRead(c, msg)
 		})
 	}
@@ -66,6 +74,7 @@ func (ctx *DefaultContext) FireReadHandler(msg interface{}) {
 func (ctx *DefaultContext) Write(msg interface{}) {
 	if c := findOutboundContext(ctx, Write); c != nil {
 		try(c, func() {
+			ctx.log.Debugf("[%v] => [%v] fire write", ctx, c)
 			c.Handler().Write(c, msg)
 		})
 	}
@@ -74,6 +83,7 @@ func (ctx *DefaultContext) Write(msg interface{}) {
 func (ctx *DefaultContext) FireRecoverHandler(v interface{}) {
 	if c := findInboundContext(ctx, Recover); c != nil {
 		try(c, func() {
+			ctx.log.Debugf("[%v] => [%v] fire recover", ctx, c)
 			c.Handler().ChannelRecovered(c, v)
 		})
 	}
@@ -107,35 +117,55 @@ func (ctx *DefaultContext) Flag() Flag {
 	return ctx.flag
 }
 
+func (ctx *DefaultContext) Name() string {
+	return ctx.name
+}
+
+func (ctx *DefaultContext) String() string {
+	buf := bytes.Buffer{}
+
+	buf.WriteString("context: ")
+	buf.WriteString(ctx.name)
+	buf.WriteString(", channel: ")
+	buf.WriteString(fmt.Sprintf("%p", ctx.pipeline.ch))
+
+	return buf.String()
+}
+
 type HeadContext struct {
+	name       string
 	next, prev Context
 	pipeline   *Pipeline
 	handler    Handler
+	log        logger.Logger
 }
 
-func NewHeadContext(pipeline *Pipeline) *HeadContext {
+func NewHeadContext(pipeline *Pipeline, name string) *HeadContext {
 	return &HeadContext{
+		name:     name,
 		pipeline: pipeline,
-		handler:  NewHandlerWrapper(&headHandler{}),
+		handler:  NewHandlerAdapter(name, &headHandler{}),
+		log:      logger.DefaultLogger(),
 	}
 }
 
 func (ctx *HeadContext) FireActiveHandler() {
 	if c := findInboundContext(ctx, Active); c != nil {
-		logger.Debugf("channel[%v] is active", c.Pipeline().Channel().RemoteAddress())
+		ctx.log.Debugf("[%v] => [%v] fire active", ctx, c)
 		c.Handler().ChannelActive(c)
 	}
 }
 
 func (ctx *HeadContext) FireInActiveHandler() {
 	if c := findInboundContext(ctx, InActive); c != nil {
-		logger.Debugf("channel[%v] is inactive", c.Pipeline().Channel().RemoteAddress())
+		ctx.log.Debugf("[%v] => [%v] fire inactive", ctx, c)
 		c.Handler().ChannelInActive(c)
 	}
 }
 
 func (ctx *HeadContext) FireReadHandler(msg interface{}) {
 	if c := findInboundContext(ctx, Read); c != nil {
+		ctx.log.Debugf("[%v] => [%v] fire read", ctx, c)
 		c.Handler().ChannelRead(c, msg)
 	}
 }
@@ -172,6 +202,21 @@ func (ctx *HeadContext) Handler() Handler {
 	return ctx.handler
 }
 
+func (ctx *HeadContext) Name() string {
+	return ctx.name
+}
+
+func (ctx *HeadContext) String() string {
+	buf := bytes.Buffer{}
+
+	buf.WriteString("context: ")
+	buf.WriteString(ctx.name)
+	buf.WriteString(", channel: ")
+	buf.WriteString(fmt.Sprintf("%p", ctx.pipeline.ch))
+
+	return buf.String()
+}
+
 type headHandler struct{}
 
 func (*headHandler) Write(ctx Context, msg interface{}) {
@@ -179,15 +224,19 @@ func (*headHandler) Write(ctx Context, msg interface{}) {
 }
 
 type TailContext struct {
+	name       string
 	next, prev Context
 	pipeline   *Pipeline
 	handler    Handler
+	log        logger.Logger
 }
 
-func NewTailContext(pipeline *Pipeline) *TailContext {
+func NewTailContext(pipeline *Pipeline, name string) *TailContext {
 	return &TailContext{
+		name:     name,
 		pipeline: pipeline,
-		handler:  NewHandlerWrapper(nil),
+		handler:  NewHandlerAdapter(name, nil),
+		log:      logger.DefaultLogger(),
 	}
 }
 
@@ -205,6 +254,7 @@ func (*TailContext) FireReadHandler(msg interface{}) {
 
 func (ctx *TailContext) Write(msg interface{}) {
 	if c := findOutboundContext(ctx, Write); c != nil {
+		ctx.log.Debugf("[%v] => [%v] fire write", ctx, c)
 		c.Handler().Write(c, msg)
 	}
 }
@@ -237,6 +287,21 @@ func (ctx *TailContext) Handler() Handler {
 	return ctx.handler
 }
 
+func (ctx *TailContext) Name() string {
+	return ctx.name
+}
+
+func (ctx *TailContext) String() string {
+	buf := bytes.Buffer{}
+
+	buf.WriteString("context: ")
+	buf.WriteString(ctx.name)
+	buf.WriteString(", channel: ")
+	buf.WriteString(fmt.Sprintf("%p", ctx.pipeline.ch))
+
+	return buf.String()
+}
+
 func findInboundContext(current Context, flag Flag) Context {
 	for c := current.Next(); c != nil; c = c.Next() {
 		if c.Handler().Flag()&flag == flag {
@@ -265,7 +330,6 @@ func try(ctx Context, doHandler func()) {
 		}
 
 		if !(ctx.Handler().Flag()&Recover == Recover) {
-			logger.Errorf("unhandled error: %v", v)
 			return
 		}
 

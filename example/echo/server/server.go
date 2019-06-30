@@ -3,26 +3,27 @@ package main
 import (
 	"math"
 	"ngio"
+	"ngio/channel"
 	"ngio/codec"
 	"ngio/example/echo"
-	"ngio/transport/tcp"
+	"ngio/option"
 	"os"
 	"os/signal"
 )
 
 func main() {
-	srv := tcp.NewServer(
-		tcp.WithNoDelay(true),
-		tcp.WithKeepAlive(true),
-		tcp.WithInitializer(func(ch ngio.Channel) {
-			ch.Pipeline().Append(codec.NewByteToMessageDecoderAdapter(
+	srv := ngio.NewServer("tcp4", "localhost:9863").
+		Option(option.TCPNoDelay(true)).
+		Option(option.TCPKeepAlive(true)).
+		Channel(func(ch channel.Channel) {
+			ch.Pipeline().Append("decoder", codec.NewByteToMessageDecoderAdapter(
 				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
 
-			ch.Pipeline().Append(new(echo.Handler))
-		}))
+			ch.Pipeline().Append("handler", echo.NewHandler())
+		})
 
 	go func() {
-		if err := srv.Serve("tcp4", "localhost:9863"); err != nil {
+		if err := srv.Serve(); err != nil {
 			panic(err)
 			return
 		}
