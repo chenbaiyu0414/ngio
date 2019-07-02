@@ -16,10 +16,10 @@ func main() {
 		Option(option.TCPNoDelay(true)).
 		Option(option.TCPKeepAlive(true)).
 		Channel(func(ch channel.Channel) {
-			ch.Pipeline().Append("decoder", codec.NewByteToMessageDecoderAdapter(
+			ch.Pipeline().AddLast("decoder", codec.NewByteToMessageDecoderAdapter(
 				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
 
-			ch.Pipeline().Append("handler", echo.NewHandler())
+			ch.Pipeline().AddLast("handler", echo.NewHandler())
 		})
 
 	go func() {

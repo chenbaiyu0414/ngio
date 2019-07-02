@@ -2,14 +2,17 @@ package channel
 
 import (
 	"bytes"
-	"fmt"
 	"net"
 	"ngio/buffer"
 	"ngio/logger"
 	"strconv"
+	"sync/atomic"
 )
 
+var udpChannelId uint32
+
 type UDPChannel struct {
+	id         uint32
 	isActive   bool
 	conn       *net.UDPConn
 	pipeline   *Pipeline
@@ -20,6 +23,7 @@ type UDPChannel struct {
 
 func NewUDPChannel(conn *net.UDPConn) *UDPChannel {
 	ch := &UDPChannel{
+		id:         atomic.AddUint32(&udpChannelId, 1),
 		isActive:   false,
 		conn:       conn,
 		attributes: NewDefaultAttributes(),
@@ -29,6 +33,10 @@ func NewUDPChannel(conn *net.UDPConn) *UDPChannel {
 
 	ch.pipeline = NewPipeline(ch)
 	return ch
+}
+
+func (ch *UDPChannel) Id() uint32 {
+	return ch.id
 }
 
 func (ch *UDPChannel) IsActive() bool {
@@ -127,8 +135,8 @@ func (ch *UDPChannel) Close() {
 func (ch *UDPChannel) String() string {
 	buf := bytes.Buffer{}
 
-	buf.WriteString("channel: ")
-	buf.WriteString(fmt.Sprintf("%p", ch))
+	buf.WriteString("channel id: ")
+	buf.WriteString(strconv.FormatInt(int64(ch.id), 10))
 	buf.WriteString("network: ")
 	buf.WriteString(ch.LocalAddress().Network())
 	buf.WriteString(", remote: ")

@@ -10,36 +10,27 @@ const (
 	InActive
 	Read
 	Write
-	Recover
+	HandleError
 )
 
-type Handler interface {
-	ActiveHandler
-	InActiveHandler
-	ReadHandler
-	WriteHandler
-	RecoverHandler
-	Flag() Flag
-}
-
 type ActiveHandler interface {
-	ChannelActive(ctx Context)
+	ChannelActive(ctx *Context)
 }
 
 type InActiveHandler interface {
-	ChannelInActive(ctx Context)
+	ChannelInActive(ctx *Context)
 }
 
 type ReadHandler interface {
-	ChannelRead(ctx Context, msg interface{})
+	ChannelRead(ctx *Context, msg interface{})
 }
 
 type WriteHandler interface {
-	Write(ctx Context, msg interface{})
+	Write(ctx *Context, msg interface{})
 }
 
-type RecoverHandler interface {
-	ChannelRecovered(ctx Context, v interface{})
+type ErrorHandler interface {
+	HandleError(ctx *Context, err error)
 }
 
 type HandlerAdapter struct {
@@ -48,81 +39,77 @@ type HandlerAdapter struct {
 	inActiveHandler InActiveHandler
 	readHandler     ReadHandler
 	writeHandler    WriteHandler
-	recoverHandler  RecoverHandler
+	errorHandler    ErrorHandler
 	flag            Flag
 	log             logger.Logger
 }
 
 func NewHandlerAdapter(name string, handler interface{}) *HandlerAdapter {
-	wrapper := &HandlerAdapter{
+	adapter := &HandlerAdapter{
 		name: name,
 		flag: None,
 		log:  logger.DefaultLogger(),
 	}
 
 	if h, ok := handler.(ActiveHandler); ok {
-		wrapper.activeHandler = h
-		wrapper.flag |= Active
+		adapter.activeHandler = h
+		adapter.flag |= Active
 	}
 
 	if h, ok := handler.(InActiveHandler); ok {
-		wrapper.inActiveHandler = h
-		wrapper.flag |= InActive
+		adapter.inActiveHandler = h
+		adapter.flag |= InActive
 	}
 
 	if h, ok := handler.(ReadHandler); ok {
-		wrapper.readHandler = h
-		wrapper.flag |= Read
+		adapter.readHandler = h
+		adapter.flag |= Read
 	}
 
 	if h, ok := handler.(WriteHandler); ok {
-		wrapper.writeHandler = h
-		wrapper.flag |= Write
+		adapter.writeHandler = h
+		adapter.flag |= Write
 	}
 
-	if h, ok := handler.(RecoverHandler); ok {
-		wrapper.recoverHandler = h
-		wrapper.flag |= Recover
+	if h, ok := handler.(ErrorHandler); ok {
+		adapter.errorHandler = h
+		adapter.flag |= HandleError
 	}
 
-	return wrapper
+	return adapter
 }
 
-func (adapter *HandlerAdapter) ChannelActive(ctx Context) {
+func (adapter *HandlerAdapter) ChannelActive(ctx *Context) {
 	if adapter.activeHandler != nil {
-		adapter.log.Debugf("[handler: %s] call channel active", adapter.name)
+		adapter.log.Debugf("[handler: %s] invoke channel active", adapter.name)
 		adapter.activeHandler.ChannelActive(ctx)
 	}
 }
 
-func (adapter *HandlerAdapter) ChannelInActive(ctx Context) {
+func (adapter *HandlerAdapter) ChannelInActive(ctx *Context) {
 	if adapter.inActiveHandler != nil {
-		adapter.log.Debugf("[handler: %s] call channel inactive", adapter.name)
+		adapter.log.Debugf("[handler: %s] invoke channel inactive", adapter.name)
 		adapter.inActiveHandler.ChannelInActive(ctx)
 	}
 }
 
-func (adapter *HandlerAdapter) ChannelRead(ctx Context, msg interface{}) {
+func (adapter *HandlerAdapter) ChannelRead(ctx *Context, msg interface{}) {
 	if adapter.readHandler != nil {
-		adapter.log.Debugf("[handler: %s] call channel read", adapter.name)
+		adapter.log.Debugf("[handler: %s] invoke channel read", adapter.name)
 		adapter.readHandler.ChannelRead(ctx, msg)
 	}
 }
 
-func (adapter *HandlerAdapter) Write(ctx Context, msg interface{}) {
+func (adapter *HandlerAdapter) Write(ctx *Context, msg interface{}) {
 	if adapter.writeHandler != nil {
-		adapter.log.Debugf("[handler: %s] call channel write", adapter.name)
+		adapter.log.Debugf("[handler: %s] invoke channel write", adapter.name)
 		adapter.writeHandler.Write(ctx, msg)
 	}
 }
 
-func (adapter *HandlerAdapter) ChannelRecovered(ctx Context, v interface{}) {
-	if adapter.recoverHandler != nil {
-		adapter.log.Debugf("[handler: %s] call channel recover", adapter.name)
-		adapter.recoverHandler.ChannelRecovered(ctx, v)
+func (adapter *HandlerAdapter) HandleError(ctx *Context, err error) {
+	if adapter.errorHandler != nil {
+		adapter.log.Debugf("[handler: %s] invoke channel handle error", adapter.name)
+		adapter.errorHandler.HandleError(ctx, err)
 	}
-}
-
-func (adapter *HandlerAdapter) Flag() Flag {
-	return adapter.flag
 }

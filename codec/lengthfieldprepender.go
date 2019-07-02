@@ -29,7 +29,7 @@ func NewLengthFieldPrepender(byteOrder buffer.ByteOrder, lengthFieldLength int, 
 	}
 }
 
-func (encoder *LengthFieldPrepender) Encode(ctx channel.Context, in interface{}) (out []interface{}) {
+func (encoder *LengthFieldPrepender) Encode(ctx *channel.Context, in interface{}) (out []interface{}) {
 	msg, ok := in.(buffer.ByteBuffer)
 	if !ok {
 		panic(fmt.Errorf("typeof(in) != buffer.Bytebuffer"))

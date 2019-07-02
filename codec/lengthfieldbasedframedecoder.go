@@ -44,7 +44,7 @@ func NewLengthFieldBasedFrameDecoder(byteOrder buffer.ByteOrder, maxFrameLength 
 	}
 }
 
-func (decoder *LengthFieldBasedFrameDecoder) Decode(ctx channel.Context, in buffer.ByteBuffer) interface{} {
+func (decoder *LengthFieldBasedFrameDecoder) Decode(ctx *channel.Context, in buffer.ByteBuffer) interface{} {
 	if in.ReadableBytes() < decoder.lengthFieldEndOffset {
 		return nil
 	}

@@ -16,7 +16,7 @@ func NewHandler() *Handler {
 	}
 }
 
-func (handler *Handler) ChannelRead(ctx channel.Context, msg interface{}) {
+func (handler *Handler) ChannelRead(ctx *channel.Context, msg interface{}) {
 	bf, ok := msg.(buffer.ByteBuffer)
 	if !ok {
 		handler.log.Errorf("msg is not buffer.ByteBuffer")
@@ -30,10 +30,14 @@ func (handler *Handler) ChannelRead(ctx channel.Context, msg interface{}) {
 	ctx.Write(bf)
 }
 
-func (handler *Handler) ChannelInActive(ctx channel.Context) {
+func (handler *Handler) ChannelInActive(ctx *channel.Context) {
 	handler.log.Infof("inactive")
 }
 
-func (handler *Handler) ChannelActive(ctx channel.Context) {
+func (handler *Handler) ChannelActive(ctx *channel.Context) {
 	handler.log.Infof("active")
+}
+
+func (handler *Handler) HandleError(ctx *channel.Context, err error) {
+	handler.log.Errorf("unexpected unhandled error: %v", err)
 }

@@ -21,7 +21,7 @@ func NewDelimiterBasedFrameDecoder(maxLength int, stripDelimiter bool, delimiter
 	}
 }
 
-func (decoder *DelimiterBasedFrameDecoder) Decode(ctx channel.Context, in buffer.ByteBuffer) (out interface{}) {
+func (decoder *DelimiterBasedFrameDecoder) Decode(ctx *channel.Context, in buffer.ByteBuffer) (out interface{}) {
 	minLength := decoder.maxLength
 	shortestDelimLength := 0
 
@@ -40,7 +40,7 @@ func (decoder *DelimiterBasedFrameDecoder) Decode(ctx channel.Context, in buffer
 
 	if minLength > decoder.maxLength {
 		in.Skip(minLength + shortestDelimLength)
-		ctx.FireRecoverHandler(fmt.Errorf("[DelimiterBasedFrameDecoder] max length exceeds"))
+		ctx.FireChannelErrorHandler(fmt.Errorf("[DelimiterBasedFrameDecoder] max length exceeds"))
 		return
 	}
 

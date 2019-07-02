@@ -4,342 +4,172 @@ import (
 	"bytes"
 	"fmt"
 	"ngio/logger"
+	"strconv"
 )
 
-type Context interface {
-	FireActiveHandler()
-	FireInActiveHandler()
-	FireReadHandler(msg interface{})
-	Write(msg interface{})
-	FireRecoverHandler(v interface{})
-	Next() Context
-	SetNext(next Context)
-	Prev() Context
-	SetPrev(prev Context)
-	Pipeline() *Pipeline
-	Handler() Handler
-	Name() string
-	fmt.Stringer
+type Context struct {
+	name           string
+	next, prev     *Context
+	pipeline       *Pipeline
+	handlerAdapter *HandlerAdapter
+	log            logger.Logger
 }
 
-type DefaultContext struct {
-	name       string
-	next, prev Context
-	pipeline   *Pipeline
-	handler    Handler
-	flag       Flag
-	log        logger.Logger
-}
-
-func NewDefaultContext(pipeline *Pipeline, name string, handler interface{}) *DefaultContext {
-	if handler == nil {
-		panic("handler is nil")
+func NewContext(name string, handler interface{}, pipeline *Pipeline) *Context {
+	switch handler.(type) {
+	case ActiveHandler, InActiveHandler, ReadHandler, WriteHandler, ErrorHandler, *tailHandler:
+	default:
+		panic(fmt.Errorf(`invalid handler type. name: "%s"`, name))
 	}
 
-	return &DefaultContext{
-		name:     name,
-		pipeline: pipeline,
-		handler:  NewHandlerAdapter(name, handler),
-		log:      logger.DefaultLogger(),
+	return &Context{
+		name:           name,
+		pipeline:       pipeline,
+		handlerAdapter: NewHandlerAdapter(name, handler),
+		log:            logger.DefaultLogger(),
 	}
 }
 
-func (ctx *DefaultContext) FireActiveHandler() {
-	if c := findInboundContext(ctx, Active); c != nil {
-		try(c, func() {
-			ctx.log.Debugf("[%v] => [%v] fire active", ctx, c)
-			c.Handler().ChannelActive(c)
-		})
+func (ctx *Context) FireActiveHandler() {
+	next := ctx.findInboundContext(Active)
+
+	if next == nil {
+		ctx.log.Warnf("[%v] fire next active handler failed: context after current not contains active handler.", ctx)
+		return
 	}
+
+	defer interceptError(ctx)
+
+	ctx.log.Debugf("[%v] => [%v] fire active", ctx, next)
+	next.handlerAdapter.ChannelActive(next)
 }
 
-func (ctx *DefaultContext) FireInActiveHandler() {
-	if c := findInboundContext(ctx, InActive); c != nil {
-		try(c, func() {
-			ctx.log.Debugf("[%v] => [%v] fire inactive", ctx, c)
-			c.Handler().ChannelInActive(c)
-		})
+func (ctx *Context) FireInActiveHandler() {
+	next := ctx.findInboundContext(InActive)
+
+	if next == nil {
+		ctx.log.Warnf("[%v] fire next inactive handler failed: context after current not contains inactive handler.", ctx)
+		return
 	}
+
+	defer interceptError(ctx)
+
+	ctx.log.Debugf("[%v] => [%v] fire inactive", ctx, next)
+	next.handlerAdapter.ChannelInActive(next)
 }
 
-func (ctx *DefaultContext) FireReadHandler(msg interface{}) {
-	if c := findInboundContext(ctx, Read); c != nil {
-		try(c, func() {
-			ctx.log.Debugf("[%v] => [%v] fire read", ctx, c)
-			c.Handler().ChannelRead(c, msg)
-		})
+func (ctx *Context) FireReadHandler(msg interface{}) {
+	next := ctx.findInboundContext(Read)
+
+	if next == nil {
+		ctx.log.Warnf("[%v] fire next read handler failed: context after current not contains read handler.", ctx)
+		return
 	}
+
+	defer interceptError(ctx)
+
+	ctx.log.Debugf("[%v] => [%v] fire read", ctx, next)
+	next.handlerAdapter.ChannelRead(next, msg)
 }
 
-func (ctx *DefaultContext) Write(msg interface{}) {
-	if c := findOutboundContext(ctx, Write); c != nil {
-		try(c, func() {
-			ctx.log.Debugf("[%v] => [%v] fire write", ctx, c)
-			c.Handler().Write(c, msg)
-		})
+func (ctx *Context) Write(msg interface{}) {
+	next := ctx.findOutboundContext(Write)
+
+	if next == nil {
+		// current context is the lasted outbound context.
+		ctx.handlerAdapter.Write(ctx, msg)
+		return
 	}
+
+	defer interceptError(ctx)
+
+	ctx.log.Debugf("[%v] => [%v] fire write", ctx, next)
+	next.handlerAdapter.Write(next, msg)
 }
 
-func (ctx *DefaultContext) FireRecoverHandler(v interface{}) {
-	if c := findInboundContext(ctx, Recover); c != nil {
-		try(c, func() {
-			ctx.log.Debugf("[%v] => [%v] fire recover", ctx, c)
-			c.Handler().ChannelRecovered(c, v)
-		})
+func (ctx *Context) FireChannelErrorHandler(err error) {
+	next := ctx.findInboundContext(HandleError)
+
+	if next == nil {
+		ctx.log.Warnf("[%v] fire next error handler failed: context after current not contains error handler. error: %v", ctx, err)
+		return
 	}
+
+	defer interceptError(ctx)
+
+	ctx.log.Debugf("[%v] => [%v] fire handle error", ctx, next)
+	next.handlerAdapter.HandleError(next, err)
 }
 
-func (ctx *DefaultContext) Next() Context {
+func (ctx *Context) Next() *Context {
 	return ctx.next
 }
 
-func (ctx *DefaultContext) SetNext(next Context) {
-	ctx.next = next
-}
-
-func (ctx *DefaultContext) Prev() Context {
+func (ctx *Context) Prev() *Context {
 	return ctx.prev
 }
 
-func (ctx *DefaultContext) SetPrev(prev Context) {
-	ctx.prev = prev
-}
-
-func (ctx *DefaultContext) Pipeline() *Pipeline {
+func (ctx *Context) Pipeline() *Pipeline {
 	return ctx.pipeline
 }
 
-func (ctx *DefaultContext) Handler() Handler {
-	return ctx.handler
-}
-
-func (ctx *DefaultContext) Flag() Flag {
-	return ctx.flag
-}
-
-func (ctx *DefaultContext) Name() string {
+func (ctx *Context) Name() string {
 	return ctx.name
 }
 
-func (ctx *DefaultContext) String() string {
+func (ctx *Context) String() string {
 	buf := bytes.Buffer{}
 
-	buf.WriteString("context: ")
+	buf.WriteString(`context: "`)
 	buf.WriteString(ctx.name)
-	buf.WriteString(", channel: ")
-	buf.WriteString(fmt.Sprintf("%p", ctx.pipeline.ch))
+	buf.WriteString(`", channel id: `)
+	buf.WriteString(strconv.FormatInt(int64(ctx.pipeline.ch.Id()), 10))
 
 	return buf.String()
 }
 
-type HeadContext struct {
-	name       string
-	next, prev Context
-	pipeline   *Pipeline
-	handler    Handler
-	log        logger.Logger
-}
-
-func NewHeadContext(pipeline *Pipeline, name string) *HeadContext {
-	return &HeadContext{
-		name:     name,
-		pipeline: pipeline,
-		handler:  NewHandlerAdapter(name, &headHandler{}),
-		log:      logger.DefaultLogger(),
-	}
-}
-
-func (ctx *HeadContext) FireActiveHandler() {
-	if c := findInboundContext(ctx, Active); c != nil {
-		ctx.log.Debugf("[%v] => [%v] fire active", ctx, c)
-		c.Handler().ChannelActive(c)
-	}
-}
-
-func (ctx *HeadContext) FireInActiveHandler() {
-	if c := findInboundContext(ctx, InActive); c != nil {
-		ctx.log.Debugf("[%v] => [%v] fire inactive", ctx, c)
-		c.Handler().ChannelInActive(c)
-	}
-}
-
-func (ctx *HeadContext) FireReadHandler(msg interface{}) {
-	if c := findInboundContext(ctx, Read); c != nil {
-		ctx.log.Debugf("[%v] => [%v] fire read", ctx, c)
-		c.Handler().ChannelRead(c, msg)
-	}
-}
-
-func (ctx *HeadContext) Write(msg interface{}) {
-
-}
-
-func (ctx *HeadContext) FireRecoverHandler(v interface{}) {
-
-}
-
-func (ctx *HeadContext) Next() Context {
-	return ctx.next
-}
-
-func (ctx *HeadContext) SetNext(next Context) {
-	ctx.next = next
-}
-
-func (ctx *HeadContext) Prev() Context {
-	return ctx.prev
-}
-
-func (ctx *HeadContext) SetPrev(prev Context) {
-	ctx.prev = prev
-}
-
-func (ctx *HeadContext) Pipeline() *Pipeline {
-	return ctx.pipeline
-}
-
-func (ctx *HeadContext) Handler() Handler {
-	return ctx.handler
-}
-
-func (ctx *HeadContext) Name() string {
-	return ctx.name
-}
-
-func (ctx *HeadContext) String() string {
-	buf := bytes.Buffer{}
-
-	buf.WriteString("context: ")
-	buf.WriteString(ctx.name)
-	buf.WriteString(", channel: ")
-	buf.WriteString(fmt.Sprintf("%p", ctx.pipeline.ch))
-
-	return buf.String()
-}
-
-type headHandler struct{}
-
-func (*headHandler) Write(ctx Context, msg interface{}) {
-	ctx.Pipeline().Channel().Write(msg)
-}
-
-type TailContext struct {
-	name       string
-	next, prev Context
-	pipeline   *Pipeline
-	handler    Handler
-	log        logger.Logger
-}
-
-func NewTailContext(pipeline *Pipeline, name string) *TailContext {
-	return &TailContext{
-		name:     name,
-		pipeline: pipeline,
-		handler:  NewHandlerAdapter(name, nil),
-		log:      logger.DefaultLogger(),
-	}
-}
-
-func (*TailContext) FireActiveHandler() {
-
-}
-
-func (*TailContext) FireInActiveHandler() {
-
-}
-
-func (*TailContext) FireReadHandler(msg interface{}) {
-
-}
-
-func (ctx *TailContext) Write(msg interface{}) {
-	if c := findOutboundContext(ctx, Write); c != nil {
-		ctx.log.Debugf("[%v] => [%v] fire write", ctx, c)
-		c.Handler().Write(c, msg)
-	}
-}
-
-func (*TailContext) FireRecoverHandler(v interface{}) {
-
-}
-
-func (ctx *TailContext) Next() Context {
-	return ctx.next
-}
-
-func (ctx *TailContext) SetNext(next Context) {
-	ctx.next = next
-}
-
-func (ctx *TailContext) Prev() Context {
-	return ctx.prev
-}
-
-func (ctx *TailContext) SetPrev(prev Context) {
-	ctx.prev = prev
-}
-
-func (ctx *TailContext) Pipeline() *Pipeline {
-	return ctx.pipeline
-}
-
-func (ctx *TailContext) Handler() Handler {
-	return ctx.handler
-}
-
-func (ctx *TailContext) Name() string {
-	return ctx.name
-}
-
-func (ctx *TailContext) String() string {
-	buf := bytes.Buffer{}
-
-	buf.WriteString("context: ")
-	buf.WriteString(ctx.name)
-	buf.WriteString(", channel: ")
-	buf.WriteString(fmt.Sprintf("%p", ctx.pipeline.ch))
-
-	return buf.String()
-}
-
-func findInboundContext(current Context, flag Flag) Context {
-	for c := current.Next(); c != nil; c = c.Next() {
-		if c.Handler().Flag()&flag == flag {
-			return c
+func (ctx *Context) findInboundContext(flag Flag) *Context {
+	for next := ctx.Next(); next != nil; next = next.next {
+		if next.handlerAdapter.flag&flag == flag {
+			return next
 		}
 	}
 
 	return nil
 }
 
-func findOutboundContext(current Context, flag Flag) Context {
-	for c := current.Next(); c != nil; c = c.Prev() {
-		if c.Handler().Flag()&flag == flag {
-			return c
+func (ctx *Context) findOutboundContext(flag Flag) *Context {
+	for prev := ctx.prev; prev != nil; prev = prev.prev {
+		if prev.handlerAdapter.flag&flag == flag {
+			return prev
 		}
 	}
 
 	return nil
 }
 
-func try(ctx Context, doHandler func()) {
-	defer func() {
-		v := recover()
-		if v == nil {
-			return
+func interceptError(ctx *Context) {
+	if v := recover(); v != nil {
+		var e error
+
+		if vErr, ok := v.(error); ok {
+			e = vErr
+		} else {
+			e = fmt.Errorf("%v", v)
 		}
 
-		if !(ctx.Handler().Flag()&Recover == Recover) {
-			return
-		}
+		// if current context contains error handler, then invoke current context's error handler.
+		// if not, invoke the next context which contains error handler.
+		// if there's no context contains error handler after current context, log it.
 
-		switch v.(type) {
-		case error:
-			ctx.Handler().ChannelRecovered(ctx, v.(error))
-		default:
-			ctx.Handler().ChannelRecovered(ctx, fmt.Errorf("%v", v))
+		// when invoke error handle, the param ctx should be current context, it specified
+		// which context that error occurred.
+		if ctx.handlerAdapter.flag&HandleError == HandleError {
+			ctx.handlerAdapter.HandleError(ctx, e)
+		} else if next := ctx.findInboundContext(HandleError); next != nil {
+			next.handlerAdapter.HandleError(ctx, e)
+		} else {
+			ctx.log.Errorf("unhandled error: %v", e)
 		}
-	}()
-
-	doHandler()
+	}
 }

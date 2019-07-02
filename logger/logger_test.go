@@ -1,6 +1,8 @@
 package logger
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestNewInternalLogger(t *testing.T) {
 	l := newInternalLogger(LevelDebug)

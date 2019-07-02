@@ -8,6 +8,7 @@ import (
 type Initializer func(ch Channel)
 
 type Channel interface {
+	Id() uint32
 	IsActive() bool
 	Pipeline() *Pipeline
 	LocalAddress() net.Addr

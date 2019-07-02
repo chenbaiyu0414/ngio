@@ -19,7 +19,7 @@ func NewLineBasedFrameDecoder(maxLength int, stripDelimiter bool) *LineBasedFram
 	}
 }
 
-func (decoder *LineBasedFrameDecoder) Decode(ctx channel.Context, in buffer.ByteBuffer) (out interface{}) {
+func (decoder *LineBasedFrameDecoder) Decode(ctx *channel.Context, in buffer.ByteBuffer) (out interface{}) {
 	delimiterLength := 1
 
 	i := bytes.IndexByte(in.GetBytes(in.ReaderIndex(), in.ReadableBytes()), '\n')
@@ -34,7 +34,7 @@ func (decoder *LineBasedFrameDecoder) Decode(ctx channel.Context, in buffer.Byte
 
 	if i > decoder.maxLength {
 		in.Skip(i + delimiterLength)
-		ctx.FireRecoverHandler(fmt.Errorf("[LineBasedFrameDecoder] max length exceeds"))
+		ctx.FireChannelErrorHandler(fmt.Errorf("[LineBasedFrameDecoder] max length exceeds"))
 		return
 	}
 

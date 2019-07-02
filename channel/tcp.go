@@ -2,18 +2,21 @@ package channel
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"ngio/buffer"
 	"ngio/logger"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
+var tcpChannelId uint32
+
 // TCPChannel is a connection between server and client
 type TCPChannel struct {
+	id                  uint32
 	isActive            bool
 	conn                net.Conn
 	closeC              chan struct{}
@@ -30,6 +33,7 @@ type TCPChannel struct {
 
 func NewTCPChannel(conn net.Conn, writeDeadlinePeriod, readDeadlinePeriod time.Duration) *TCPChannel {
 	ch := &TCPChannel{
+		id:                  atomic.AddUint32(&tcpChannelId, 1),
 		isActive:            false,
 		conn:                conn,
 		closeC:              make(chan struct{}),
@@ -45,6 +49,10 @@ func NewTCPChannel(conn net.Conn, writeDeadlinePeriod, readDeadlinePeriod time.D
 
 	ch.pipeline = NewPipeline(ch)
 	return ch
+}
+
+func (ch *TCPChannel) Id() uint32 {
+	return ch.id
 }
 
 func (ch *TCPChannel) IsActive() bool {
@@ -209,8 +217,8 @@ func (ch *TCPChannel) Close() {
 func (ch *TCPChannel) String() string {
 	buf := bytes.Buffer{}
 
-	buf.WriteString("channel: ")
-	buf.WriteString(fmt.Sprintf("%p", ch))
+	buf.WriteString("channel id: ")
+	buf.WriteString(strconv.FormatInt(int64(ch.id), 10))
 	buf.WriteString(", network: ")
 	buf.WriteString(ch.RemoteAddress().Network())
 	buf.WriteString(", remote: ")

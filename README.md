@@ -16,7 +16,7 @@
 - [x] LengthFieldPrepender
 - [x] LineBasedFrameDecoder
 - [x] SSL/TLS
-- [ ] HTTP
+- [ ] ~~HTTP~~
 - [ ] Protobuf
 - [ ] ......
 
@@ -42,10 +42,10 @@ func main() {
     		Option(option.TCPNoDelay(true)).
     		Option(option.TCPKeepAlive(true)).
     		Channel(func(ch channel.Channel) {
-    			ch.Pipeline().Append("decoder", codec.NewByteToMessageDecoderAdapter(
+    			ch.Pipeline().AddLast("decoder", codec.NewByteToMessageDecoderAdapter(
     				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
     
-    			ch.Pipeline().Append("handler", echo.NewHandler())
+    			ch.Pipeline().AddLast("handler", echo.NewHandler())
     		})
     
     	go func() {
@@ -81,27 +81,27 @@ import (
 
 func main() {
 	clt := ngio.NewClient("tcp4", "", "localhost:9863").
-		Option(option.TCPNoDelay(true)).
-		Option(option.TCPKeepAlive(true)).
-		Channel(func(ch channel.Channel) {
-			ch.Pipeline().Append("encoder", codec.NewByteToMessageDecoderAdapter(
-				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
-
-			ch.Pipeline().Append("handler", echo.NewHandler())
-		})
-
-	go func() {
-		if err := clt.Dial(); err != nil {
-			panic(err)
-			return
-		}
-	}()
-
-	ch := make(chan os.Signal)
-	signal.Notify(ch, os.Kill, os.Interrupt)
-	<-ch
-
-	clt.Close()
+    		Option(option.TCPNoDelay(true)).
+    		Option(option.TCPKeepAlive(true)).
+    		Channel(func(ch channel.Channel) {
+    			ch.Pipeline().AddLast("encoder", codec.NewByteToMessageDecoderAdapter(
+    				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
+    
+    			ch.Pipeline().AddLast("handler", echo.NewHandler())
+    		})
+    
+    	go func() {
+    		if err := clt.Dial(); err != nil {
+    			panic(err)
+    			return
+    		}
+    	}()
+    
+    	ch := make(chan os.Signal)
+    	signal.Notify(ch, os.Kill, os.Interrupt)
+    	<-ch
+    
+    	clt.Close()
 }
 
 ```
@@ -127,7 +127,7 @@ func NewHandler() *Handler {
 	}
 }
 
-func (handler *Handler) ChannelRead(ctx channel.Context, msg interface{}) {
+func (handler *Handler) ChannelRead(ctx *channel.Context, msg interface{}) {
 	bf, ok := msg.(buffer.ByteBuffer)
 	if !ok {
 		handler.log.Errorf("msg is not buffer.ByteBuffer")
@@ -141,12 +141,17 @@ func (handler *Handler) ChannelRead(ctx channel.Context, msg interface{}) {
 	ctx.Write(bf)
 }
 
-func (handler *Handler) ChannelInActive(ctx channel.Context) {
+func (handler *Handler) ChannelInActive(ctx *channel.Context) {
 	handler.log.Infof("inactive")
 }
 
-func (handler *Handler) ChannelActive(ctx channel.Context) {
+func (handler *Handler) ChannelActive(ctx *channel.Context) {
 	handler.log.Infof("active")
 }
+
+func (handler *Handler) HandleError(ctx *channel.Context, err error) {
+	handler.log.Errorf("unexpected unhandled error: %v", err)
+}
+
 
 ```
