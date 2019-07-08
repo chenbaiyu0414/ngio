@@ -1,23 +1,24 @@
-package listener
+package tcp
 
 import (
 	"crypto/tls"
 	"net"
-	"ngio/channel"
+	"ngio/internal"
 	"ngio/logger"
 	"ngio/option"
+	"ngio/transport"
 	"strings"
 )
 
-type TCPListener struct {
+type listener struct {
 	addr        *net.TCPAddr
 	listener    *net.TCPListener
 	opts        *option.Options
 	log         logger.Logger
-	initializer channel.Initializer
+	initializer func(channel internal.IChannel)
 }
 
-func NewTCPListener(network, laddr string, opts *option.Options, initializer channel.Initializer) (*TCPListener, error) {
+func NewListener(network, laddr string, opts *option.Options, initializer func(channel internal.IChannel)) (*listener, error) {
 	addr, err := net.ResolveTCPAddr(network, laddr)
 	if err != nil {
 		return nil, err
@@ -27,7 +28,7 @@ func NewTCPListener(network, laddr string, opts *option.Options, initializer cha
 		return nil, option.ErrOptionIsNil
 	}
 
-	return &TCPListener{
+	return &listener{
 		addr:        addr,
 		listener:    nil,
 		opts:        opts,
@@ -36,9 +37,9 @@ func NewTCPListener(network, laddr string, opts *option.Options, initializer cha
 	}, nil
 }
 
-func (lsn *TCPListener) Serve() error {
+func (lsn *listener) Serve() error {
 	if lsn.addr == nil {
-		return ErrBindAddrIsNil
+		return transport.ErrBindAddrIsNil
 	}
 
 	listener, err := net.ListenTCP(lsn.addr.Network(), lsn.addr)
@@ -73,11 +74,11 @@ func (lsn *TCPListener) Serve() error {
 			continue
 		}
 
-		var ch *channel.TCPChannel
+		var ch *channel
 		if lsn.opts.TLSConfig != nil {
-			ch = channel.NewTCPChannel(tls.Server(conn, lsn.opts.TLSConfig), lsn.opts.WriteDeadlinePeriod, lsn.opts.ReadDeadlinePeriod)
+			ch = newChannel(tls.Server(conn, lsn.opts.TLSConfig), lsn.opts.WriteDeadlinePeriod, lsn.opts.ReadDeadlinePeriod)
 		} else {
-			ch = channel.NewTCPChannel(conn, lsn.opts.WriteDeadlinePeriod, lsn.opts.ReadDeadlinePeriod)
+			ch = newChannel(conn, lsn.opts.WriteDeadlinePeriod, lsn.opts.ReadDeadlinePeriod)
 		}
 
 		if lsn.initializer != nil {
@@ -85,12 +86,12 @@ func (lsn *TCPListener) Serve() error {
 		}
 
 		go func() {
-			_ = ch.Serve()
+			_ = lsn.Serve()
 		}()
 	}
 }
 
-func (lsn *TCPListener) Shutdown() {
+func (lsn *listener) Shutdown() {
 	if lsn.listener == nil {
 		return
 	}

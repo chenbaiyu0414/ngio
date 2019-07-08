@@ -2,9 +2,11 @@ package ngio
 
 import (
 	"errors"
-	"ngio/channel"
-	"ngio/listener"
+	"ngio/internal"
 	"ngio/option"
+	"ngio/transport"
+	"ngio/transport/tcp"
+	"ngio/transport/udp"
 )
 
 var (
@@ -13,15 +15,15 @@ var (
 
 type Server struct {
 	network, laddr string
-	lsn            listener.Listener
+	lsn            transport.Listener
 	opts           *option.Options
-	initializer    channel.Initializer
+	initializer    func(channel Channel)
 }
 
 func NewServer(network, laddr string) *Server {
 	defaultOptions := &option.Options{
 		TCPNoDelay: true, // tcp nodelay is true by default. see src/net/tcpsock.newTCPConn:195
-		TCPLinger:  -1,   // tcp linger < 0 by default. see net.TCPConn's SetLinger() comment.
+		TCPLinger:  -1,   // tcp linger < 0 by default. see net.TCPConn:SetLinger() comments.
 	}
 
 	return &Server{
@@ -41,7 +43,7 @@ func (srv *Server) Option(opts ...option.Option) *Server {
 	return srv
 }
 
-func (srv *Server) Channel(initializer channel.Initializer) *Server {
+func (srv *Server) Channel(initializer func(channel Channel)) *Server {
 	srv.initializer = initializer
 	return srv
 }
@@ -49,9 +51,13 @@ func (srv *Server) Channel(initializer channel.Initializer) *Server {
 func (srv *Server) Serve() (err error) {
 	switch srv.network {
 	case "tcp", "tcp4", "tcp6":
-		srv.lsn, err = listener.NewTCPListener(srv.network, srv.laddr, srv.opts, srv.initializer)
+		srv.lsn, err = tcp.NewListener(srv.network, srv.laddr, srv.opts, func(channel internal.IChannel) {
+			srv.initializer(channel)
+		})
 	case "udp", "udp4", "udp6":
-		srv.lsn, err = listener.NewUDPListener(srv.network, srv.laddr, srv.opts, srv.initializer)
+		srv.lsn, err = udp.NewListener(srv.network, srv.laddr, srv.opts, func(channel internal.IChannel) {
+			srv.initializer(channel)
+		})
 	//case "ip", "ip4", "ip6":
 	default:
 		err = ErrUnsupportedNetwork

@@ -1,9 +1,10 @@
-package channel
+package udp
 
 import (
 	"bytes"
 	"net"
 	"ngio/buffer"
+	"ngio/internal"
 	"ngio/logger"
 	"strconv"
 	"sync/atomic"
@@ -11,43 +12,43 @@ import (
 
 var udpChannelId uint32
 
-type UDPChannel struct {
+type channel struct {
 	id         uint32
 	isActive   bool
 	conn       *net.UDPConn
-	pipeline   *Pipeline
-	attributes Attributes
+	pipeline   *internal.ChannelPipeline
+	attributes *internal.ChannelAttributes
 	quitC      chan error
 	log        logger.Logger
 }
 
-func NewUDPChannel(conn *net.UDPConn) *UDPChannel {
-	ch := &UDPChannel{
+func newChannel(conn *net.UDPConn) *channel {
+	ch := &channel{
 		id:         atomic.AddUint32(&udpChannelId, 1),
 		isActive:   false,
 		conn:       conn,
-		attributes: NewDefaultAttributes(),
+		attributes: internal.NewChannelAttributes(),
 		quitC:      make(chan error, 1),
 		log:        logger.DefaultLogger(),
 	}
 
-	ch.pipeline = NewPipeline(ch)
+	ch.pipeline = internal.NewChannelPipeline(ch)
 	return ch
 }
 
-func (ch *UDPChannel) Id() uint32 {
+func (ch *channel) Id() uint32 {
 	return ch.id
 }
 
-func (ch *UDPChannel) IsActive() bool {
+func (ch *channel) IsActive() bool {
 	return ch.isActive
 }
 
-func (ch *UDPChannel) Pipeline() *Pipeline {
+func (ch *channel) Pipeline() internal.IChannelPipeline {
 	return ch.pipeline
 }
 
-func (ch *UDPChannel) LocalAddress() net.Addr {
+func (ch *channel) LocalAddress() net.Addr {
 	if ch.conn == nil {
 		return nil
 	}
@@ -55,15 +56,15 @@ func (ch *UDPChannel) LocalAddress() net.Addr {
 	return ch.conn.LocalAddr()
 }
 
-func (ch *UDPChannel) RemoteAddress() net.Addr {
+func (ch *channel) RemoteAddress() net.Addr {
 	panic("not support")
 }
 
-func (ch *UDPChannel) Attributes() Attributes {
+func (ch *channel) Attributes() internal.IChannelAttributes {
 	return ch.attributes
 }
 
-func (ch *UDPChannel) Serve() (err error) {
+func (ch *channel) Serve() (err error) {
 	defer func() {
 		if err != nil {
 			ch.log.Debugf("[%v] close\r\n %v", ch, err)
@@ -92,12 +93,12 @@ func (ch *UDPChannel) Serve() (err error) {
 			bf := buffer.NewByteBuf(buf, 0, r)
 			packet := buffer.NewDatagramPacket(raddr, bf)
 
-			go ch.pipeline.FireReadHandler(packet)
+			go ch.pipeline.FireChannelReadHandler(packet)
 		}
 	}
 }
 
-func (ch *UDPChannel) Write(msg interface{}) {
+func (ch *channel) Write(msg interface{}) {
 	if !ch.isActive {
 		// todo: logger
 		return
@@ -117,7 +118,7 @@ func (ch *UDPChannel) Write(msg interface{}) {
 	}
 }
 
-func (ch *UDPChannel) Close() {
+func (ch *channel) Close() {
 	if !ch.isActive {
 		return
 	}
@@ -132,7 +133,7 @@ func (ch *UDPChannel) Close() {
 
 }
 
-func (ch *UDPChannel) String() string {
+func (ch *channel) String() string {
 	buf := bytes.Buffer{}
 
 	buf.WriteString("channel id: ")

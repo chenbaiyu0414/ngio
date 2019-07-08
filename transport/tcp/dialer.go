@@ -1,27 +1,29 @@
-package dialer
+package tcp
 
 import (
+	"crypto/tls"
 	"net"
-	"ngio/channel"
+	"ngio/internal"
 	"ngio/logger"
 	"ngio/option"
+	"ngio/transport"
 )
 
-type UDPDialer struct {
-	laddr, raddr *net.UDPAddr
-	ch           *channel.UDPChannel
+type dialer struct {
+	laddr, raddr *net.TCPAddr
+	ch           *channel
 	opts         *option.Options
 	log          logger.Logger
-	initializer  channel.Initializer
+	initializer  func(channel internal.IChannel)
 }
 
-func NewUDPDialer(network, laddr, raddr string, opts *option.Options, initializer channel.Initializer) (*UDPDialer, error) {
-	remoteAddr, err := net.ResolveUDPAddr(network, raddr)
+func NewDialer(network, laddr, raddr string, opts *option.Options, initializer func(channel internal.IChannel)) (*dialer, error) {
+	remoteAddr, err := net.ResolveTCPAddr(network, raddr)
 	if err != nil {
 		return nil, err
 	}
 
-	localAddr, err := net.ResolveUDPAddr(network, laddr)
+	localAddr, err := net.ResolveTCPAddr(network, laddr)
 	if laddr != "" && err != nil {
 		return nil, err
 	}
@@ -30,7 +32,7 @@ func NewUDPDialer(network, laddr, raddr string, opts *option.Options, initialize
 		return nil, option.ErrOptionIsNil
 	}
 
-	return &UDPDialer{
+	return &dialer{
 		laddr:       localAddr,
 		raddr:       remoteAddr,
 		opts:        opts,
@@ -39,19 +41,19 @@ func NewUDPDialer(network, laddr, raddr string, opts *option.Options, initialize
 	}, nil
 }
 
-func (dal *UDPDialer) Dial() error {
+func (dal *dialer) Dial() error {
 	if dal.raddr == nil {
-		return ErrDialAddrIsNil
+		return transport.ErrDialAddrIsNil
 	}
 
-	conn, err := net.DialUDP(dal.raddr.Network(), dal.laddr, dal.raddr)
+	conn, err := net.DialTCP(dal.raddr.Network(), dal.laddr, dal.raddr)
 	if err != nil {
 		return err
 	}
 
 	dal.log.Infof("[network: %v, local: %v, remote: %v] dialed", conn.RemoteAddr().Network(), conn.LocalAddr(), conn.RemoteAddr())
 
-	if err := option.SetupUDPOptions(conn, dal.opts); err != nil {
+	if err := option.SetupTCPOptions(conn, dal.opts); err != nil {
 		dal.log.Errorf("[network: %v, local: %v, remote: %v] set socket option\r\n %v", conn.RemoteAddr().Network(), conn.LocalAddr(), conn.RemoteAddr(), err)
 		if closeErr := conn.Close(); closeErr != nil {
 			dal.log.Errorf("[network: %v, local: %v, remote: %v] close\r\n %v", conn.RemoteAddr().Network(), conn.LocalAddr(), conn.RemoteAddr(), closeErr)
@@ -59,7 +61,12 @@ func (dal *UDPDialer) Dial() error {
 		return err
 	}
 
-	dal.ch = channel.NewUDPChannel(conn)
+	if dal.opts.TLSConfig != nil {
+		dal.ch = newChannel(tls.Client(conn, dal.opts.TLSConfig), dal.opts.WriteDeadlinePeriod, dal.opts.ReadDeadlinePeriod)
+	} else {
+		dal.ch = newChannel(conn, dal.opts.WriteDeadlinePeriod, dal.opts.ReadDeadlinePeriod)
+	}
+
 	if dal.initializer != nil {
 		dal.initializer(dal.ch)
 	}
@@ -67,7 +74,7 @@ func (dal *UDPDialer) Dial() error {
 	return dal.ch.Serve()
 }
 
-func (dal *UDPDialer) Close() {
+func (dal *dialer) Close() {
 	if dal.ch == nil {
 		return
 	}

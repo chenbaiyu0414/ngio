@@ -8,7 +8,6 @@
 #### Socket
 - [x] TCP
 - [x] UDP
-- [ ] WebSocket
 
 #### Codec
 - [x] DelimiterBasedFrameDecoder
@@ -17,6 +16,7 @@
 - [x] LineBasedFrameDecoder
 - [x] SSL/TLS
 - [ ] ~~HTTP~~
+- [ ] WebSocket
 - [ ] Protobuf
 - [ ] ......
 
@@ -41,7 +41,7 @@ func main() {
 	srv := ngio.NewServer("tcp4", "localhost:9863").
     		Option(option.TCPNoDelay(true)).
     		Option(option.TCPKeepAlive(true)).
-    		Channel(func(ch channel.Channel) {
+    		Channel(func(ch ngio.Channel) {
     			ch.Pipeline().AddLast("decoder", codec.NewByteToMessageDecoderAdapter(
     				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
     
@@ -80,10 +80,10 @@ import (
 )
 
 func main() {
-	clt := ngio.NewClient("tcp4", "", "localhost:9863").
+		clt := ngio.NewClient("tcp4", "", "localhost:9863").
     		Option(option.TCPNoDelay(true)).
     		Option(option.TCPKeepAlive(true)).
-    		Channel(func(ch channel.Channel) {
+    		Channel(func(ch ngio.Channel) {
     			ch.Pipeline().AddLast("encoder", codec.NewByteToMessageDecoderAdapter(
     				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
     
@@ -103,7 +103,6 @@ func main() {
     
     	clt.Close()
 }
-
 ```
 
 ### Handler
@@ -112,8 +111,8 @@ func main() {
 package echo
 
 import (
+	"ngio"
 	"ngio/buffer"
-	"ngio/channel"
 	"ngio/logger"
 )
 
@@ -127,7 +126,7 @@ func NewHandler() *Handler {
 	}
 }
 
-func (handler *Handler) ChannelRead(ctx *channel.Context, msg interface{}) {
+func (handler *Handler) ChannelRead(ctx ngio.ChannelContext, msg interface{}) {
 	bf, ok := msg.(buffer.ByteBuffer)
 	if !ok {
 		handler.log.Errorf("msg is not buffer.ByteBuffer")
@@ -141,17 +140,15 @@ func (handler *Handler) ChannelRead(ctx *channel.Context, msg interface{}) {
 	ctx.Write(bf)
 }
 
-func (handler *Handler) ChannelInActive(ctx *channel.Context) {
+func (handler *Handler) ChannelInActive(ctx ngio.ChannelContext) {
 	handler.log.Infof("inactive")
 }
 
-func (handler *Handler) ChannelActive(ctx *channel.Context) {
+func (handler *Handler) ChannelActive(ctx ngio.ChannelContext) {
 	handler.log.Infof("active")
 }
 
-func (handler *Handler) HandleError(ctx *channel.Context, err error) {
+func (handler *Handler) HandleError(ctx ngio.ChannelContext, err error) {
 	handler.log.Errorf("unexpected unhandled error: %v", err)
 }
-
-
 ```
