@@ -3,8 +3,8 @@ package codec
 import (
 	"bytes"
 	"fmt"
+	"ngio"
 	"ngio/buffer"
-	"ngio/channel"
 )
 
 type LineBasedFrameDecoder struct {
@@ -19,7 +19,7 @@ func NewLineBasedFrameDecoder(maxLength int, stripDelimiter bool) *LineBasedFram
 	}
 }
 
-func (decoder *LineBasedFrameDecoder) Decode(ctx *channel.Context, in buffer.ByteBuffer) (out interface{}) {
+func (decoder *LineBasedFrameDecoder) Decode(ctx ngio.ChannelContext, in buffer.ByteBuffer) (out interface{}) {
 	delimiterLength := 1
 
 	i := bytes.IndexByte(in.GetBytes(in.ReaderIndex(), in.ReadableBytes()), '\n')

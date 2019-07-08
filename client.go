@@ -1,16 +1,18 @@
 package ngio
 
 import (
-	"ngio/channel"
-	"ngio/dialer"
+	"ngio/internal"
 	"ngio/option"
+	"ngio/transport"
+	"ngio/transport/tcp"
+	"ngio/transport/udp"
 )
 
 type Client struct {
 	network, laddr, raddr string
-	dialer                dialer.Dialer
+	dialer                transport.Dialer
 	opts                  *option.Options
-	initializer           channel.Initializer
+	initializer           func(channel Channel)
 }
 
 func NewClient(network, laddr, raddr string) *Client {
@@ -32,7 +34,7 @@ func (clt *Client) Option(opts ...option.Option) *Client {
 	return clt
 }
 
-func (clt *Client) Channel(initializer channel.Initializer) *Client {
+func (clt *Client) Channel(initializer func(channel Channel)) *Client {
 	clt.initializer = initializer
 	return clt
 }
@@ -40,9 +42,13 @@ func (clt *Client) Channel(initializer channel.Initializer) *Client {
 func (clt *Client) Dial() (err error) {
 	switch clt.network {
 	case "tcp", "tcp4", "tcp6":
-		clt.dialer, err = dialer.NewTCPDialer(clt.network, clt.laddr, clt.raddr, clt.opts, clt.initializer)
+		clt.dialer, err = tcp.NewDialer(clt.network, clt.laddr, clt.raddr, clt.opts, func(channel internal.IChannel) {
+			clt.initializer(channel)
+		})
 	case "udp", "udp4", "udp6":
-		clt.dialer, err = dialer.NewUDPDialer(clt.network, clt.laddr, clt.raddr, clt.opts, clt.initializer)
+		clt.dialer, err = udp.NewDialer(clt.network, clt.laddr, clt.raddr, clt.opts, func(channel internal.IChannel) {
+			clt.initializer(channel)
+		})
 	//case "ip", "ip4", "ip6":
 	default:
 		err = ErrUnsupportedNetwork

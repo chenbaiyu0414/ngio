@@ -1,39 +1,10 @@
-package channel
+package internal
 
-import "ngio/logger"
-
-type Flag int
-
-const (
-	None Flag = 1 << iota
-	Active
-	InActive
-	Read
-	Write
-	HandleError
+import (
+	"ngio/logger"
 )
 
-type ActiveHandler interface {
-	ChannelActive(ctx *Context)
-}
-
-type InActiveHandler interface {
-	ChannelInActive(ctx *Context)
-}
-
-type ReadHandler interface {
-	ChannelRead(ctx *Context, msg interface{})
-}
-
-type WriteHandler interface {
-	Write(ctx *Context, msg interface{})
-}
-
-type ErrorHandler interface {
-	HandleError(ctx *Context, err error)
-}
-
-type HandlerAdapter struct {
+type ChannelHandler struct {
 	name            string
 	activeHandler   ActiveHandler
 	inActiveHandler InActiveHandler
@@ -44,8 +15,8 @@ type HandlerAdapter struct {
 	log             logger.Logger
 }
 
-func NewHandlerAdapter(name string, handler interface{}) *HandlerAdapter {
-	adapter := &HandlerAdapter{
+func NewChannelHandler(name string, handler interface{}) *ChannelHandler {
+	adapter := &ChannelHandler{
 		name: name,
 		flag: None,
 		log:  logger.DefaultLogger(),
@@ -79,37 +50,41 @@ func NewHandlerAdapter(name string, handler interface{}) *HandlerAdapter {
 	return adapter
 }
 
-func (adapter *HandlerAdapter) ChannelActive(ctx *Context) {
+func (adapter *ChannelHandler) ChannelActive(ctx IChannelContext) {
 	if adapter.activeHandler != nil {
 		adapter.log.Debugf("[handler: %s] invoke channel active", adapter.name)
 		adapter.activeHandler.ChannelActive(ctx)
 	}
 }
 
-func (adapter *HandlerAdapter) ChannelInActive(ctx *Context) {
+func (adapter *ChannelHandler) ChannelInActive(ctx IChannelContext) {
 	if adapter.inActiveHandler != nil {
 		adapter.log.Debugf("[handler: %s] invoke channel inactive", adapter.name)
 		adapter.inActiveHandler.ChannelInActive(ctx)
 	}
 }
 
-func (adapter *HandlerAdapter) ChannelRead(ctx *Context, msg interface{}) {
+func (adapter *ChannelHandler) ChannelRead(ctx IChannelContext, msg interface{}) {
 	if adapter.readHandler != nil {
 		adapter.log.Debugf("[handler: %s] invoke channel read", adapter.name)
 		adapter.readHandler.ChannelRead(ctx, msg)
 	}
 }
 
-func (adapter *HandlerAdapter) Write(ctx *Context, msg interface{}) {
+func (adapter *ChannelHandler) Write(ctx IChannelContext, msg interface{}) {
 	if adapter.writeHandler != nil {
 		adapter.log.Debugf("[handler: %s] invoke channel write", adapter.name)
 		adapter.writeHandler.Write(ctx, msg)
 	}
 }
 
-func (adapter *HandlerAdapter) HandleError(ctx *Context, err error) {
+func (adapter *ChannelHandler) HandleError(ctx IChannelContext, err error) {
 	if adapter.errorHandler != nil {
 		adapter.log.Debugf("[handler: %s] invoke channel handle error", adapter.name)
 		adapter.errorHandler.HandleError(ctx, err)
 	}
+}
+
+func (adapter *ChannelHandler) Flag() Flag {
+	return adapter.flag
 }

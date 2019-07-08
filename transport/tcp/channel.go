@@ -1,10 +1,11 @@
-package channel
+package tcp
 
 import (
 	"bytes"
 	"io"
 	"net"
 	"ngio/buffer"
+	"ngio/internal"
 	"ngio/logger"
 	"strconv"
 	"sync"
@@ -14,8 +15,7 @@ import (
 
 var tcpChannelId uint32
 
-// TCPChannel is a connection between server and client
-type TCPChannel struct {
+type channel struct {
 	id                  uint32
 	isActive            bool
 	conn                net.Conn
@@ -23,16 +23,16 @@ type TCPChannel struct {
 	quitC               chan error
 	writeC              chan buffer.ByteBuffer
 	wg                  sync.WaitGroup
-	pipeline            *Pipeline
+	pipeline            *internal.ChannelPipeline
 	recvAllocator       *buffer.RecvByteBufAllocator
-	attributes          Attributes
+	attributes          *internal.ChannelAttributes
 	writeDeadlinePeriod time.Duration
 	readDeadlinePeriod  time.Duration
 	log                 logger.Logger
 }
 
-func NewTCPChannel(conn net.Conn, writeDeadlinePeriod, readDeadlinePeriod time.Duration) *TCPChannel {
-	ch := &TCPChannel{
+func newChannel(conn net.Conn, writeDeadlinePeriod, readDeadlinePeriod time.Duration) *channel {
+	ch := &channel{
 		id:                  atomic.AddUint32(&tcpChannelId, 1),
 		isActive:            false,
 		conn:                conn,
@@ -41,29 +41,29 @@ func NewTCPChannel(conn net.Conn, writeDeadlinePeriod, readDeadlinePeriod time.D
 		writeC:              make(chan buffer.ByteBuffer, 16),
 		wg:                  sync.WaitGroup{},
 		recvAllocator:       buffer.NewRecvByteBufAllocator(buffer.DefaultMinimum, buffer.DefaultMaximum, buffer.DefaultInitial),
-		attributes:          NewDefaultAttributes(),
+		attributes:          internal.NewChannelAttributes(),
 		writeDeadlinePeriod: writeDeadlinePeriod,
 		readDeadlinePeriod:  readDeadlinePeriod,
 		log:                 logger.DefaultLogger(),
 	}
 
-	ch.pipeline = NewPipeline(ch)
+	ch.pipeline = internal.NewChannelPipeline(ch)
 	return ch
 }
 
-func (ch *TCPChannel) Id() uint32 {
+func (ch *channel) Id() uint32 {
 	return ch.id
 }
 
-func (ch *TCPChannel) IsActive() bool {
+func (ch *channel) IsActive() bool {
 	return ch.isActive
 }
 
-func (ch *TCPChannel) Pipeline() *Pipeline {
+func (ch *channel) Pipeline() internal.IChannelPipeline {
 	return ch.pipeline
 }
 
-func (ch *TCPChannel) LocalAddress() net.Addr {
+func (ch *channel) LocalAddress() net.Addr {
 	if ch.conn == nil {
 		return nil
 	}
@@ -71,7 +71,7 @@ func (ch *TCPChannel) LocalAddress() net.Addr {
 	return ch.conn.LocalAddr()
 }
 
-func (ch *TCPChannel) RemoteAddress() net.Addr {
+func (ch *channel) RemoteAddress() net.Addr {
 	if ch.conn == nil {
 		return nil
 	}
@@ -79,11 +79,11 @@ func (ch *TCPChannel) RemoteAddress() net.Addr {
 	return ch.conn.RemoteAddr()
 }
 
-func (ch *TCPChannel) Attributes() Attributes {
+func (ch *channel) Attributes() internal.IChannelAttributes {
 	return ch.attributes
 }
 
-func (ch *TCPChannel) Serve() (err error) {
+func (ch *channel) Serve() (err error) {
 	defer func() {
 		if err != nil {
 			ch.log.Debugf("[%v] close\r\n %v", ch, err)
@@ -99,12 +99,12 @@ func (ch *TCPChannel) Serve() (err error) {
 
 	ch.log.Debugf("[%v] serve", ch)
 
-	ch.pipeline.FireActiveHandler()
+	ch.pipeline.FireChannelActiveHandler()
 
 	return <-ch.quitC
 }
 
-func (ch *TCPChannel) read() {
+func (ch *channel) read() {
 	ch.wg.Add(1)
 	defer ch.wg.Done()
 
@@ -128,7 +128,7 @@ func (ch *TCPChannel) read() {
 			if err == nil {
 				ch.recvAllocator.Record(n)
 				buf.SetWriterIndex(n)
-				ch.pipeline.FireReadHandler(buf)
+				ch.pipeline.FireChannelReadHandler(buf)
 				continue
 			}
 
@@ -141,7 +141,7 @@ func (ch *TCPChannel) read() {
 	}
 }
 
-func (ch *TCPChannel) write() {
+func (ch *channel) write() {
 	ch.wg.Add(1)
 	defer ch.wg.Done()
 
@@ -181,7 +181,7 @@ func (ch *TCPChannel) write() {
 	}
 }
 
-func (ch *TCPChannel) Write(msg interface{}) {
+func (ch *channel) Write(msg interface{}) {
 	if !ch.isActive {
 		// todo: logger
 		return
@@ -193,13 +193,13 @@ func (ch *TCPChannel) Write(msg interface{}) {
 	// todo: handle msg isn't ByteBuffer
 }
 
-func (ch *TCPChannel) Close() {
+func (ch *channel) Close() {
 	if !ch.isActive {
 		return
 	}
 
 	ch.isActive = false
-	ch.pipeline.FireInActiveHandler()
+	ch.pipeline.FireChannelInActiveHandler()
 
 	go func() {
 		// broadcast close signal
@@ -214,7 +214,7 @@ func (ch *TCPChannel) Close() {
 	}()
 }
 
-func (ch *TCPChannel) String() string {
+func (ch *channel) String() string {
 	buf := bytes.Buffer{}
 
 	buf.WriteString("channel id: ")

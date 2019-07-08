@@ -2,8 +2,8 @@ package codec
 
 import (
 	"errors"
+	"ngio"
 	"ngio/buffer"
-	"ngio/channel"
 )
 
 var (
@@ -27,7 +27,7 @@ func NewMessageToByteEncoderAdapter(encoder MessageToByteEncoder) *MessageToByte
 	}
 }
 
-func (adapter *MessageToByteEncoderAdapter) Write(ctx *channel.Context, msg interface{}) {
+func (adapter *MessageToByteEncoderAdapter) Write(ctx ngio.ChannelContext, msg interface{}) {
 	out := adapter.encoder.Encode(ctx, msg)
 	if out != nil {
 		ctx.Write(out)
@@ -50,11 +50,11 @@ func NewByteToMessageDecoderAdapter(decoder ByteToMessageDecoder) *ByteToMessage
 	}
 }
 
-func (adapter *ByteToMessageDecoderAdapter) ChannelRead(ctx *channel.Context, in interface{}) {
+func (adapter *ByteToMessageDecoderAdapter) ChannelRead(ctx ngio.ChannelContext, in interface{}) {
 	r, ok := in.(buffer.ByteBuffer)
 
 	if !ok {
-		ctx.FireReadHandler(in)
+		ctx.FireChannelReadHandler(in)
 		return
 	}
 
@@ -68,7 +68,7 @@ func (adapter *ByteToMessageDecoderAdapter) ChannelRead(ctx *channel.Context, in
 		out := adapter.decoder.Decode(ctx, adapter.remained)
 
 		if out != nil {
-			ctx.FireReadHandler(out)
+			ctx.FireChannelReadHandler(out)
 		} else {
 			break
 		}
@@ -94,7 +94,7 @@ func NewMessageToMessageEncoderAdapter(encoder MessageToMessageEncoder) *Message
 	}
 }
 
-func (adapter *MessageToMessageEncoderAdapter) Write(ctx *channel.Context, msg interface{}) {
+func (adapter *MessageToMessageEncoderAdapter) Write(ctx ngio.ChannelContext, msg interface{}) {
 	outs := adapter.encoder.Encode(ctx, msg)
 	if len(outs) > 0 {
 		for _, out := range outs {
@@ -120,9 +120,9 @@ func NewMessageToMessageDecoderAdapter(decoder MessageToMessageDecoder) *Message
 	}
 }
 
-func (adapter *MessageToMessageDecoderAdapter) ChannelRead(ctx *channel.Context, msg interface{}) {
+func (adapter *MessageToMessageDecoderAdapter) ChannelRead(ctx ngio.ChannelContext, msg interface{}) {
 	outs := adapter.decoder.Decode(ctx, msg)
 	for _, out := range outs {
-		ctx.FireReadHandler(out)
+		ctx.FireChannelReadHandler(out)
 	}
 }

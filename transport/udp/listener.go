@@ -1,21 +1,22 @@
-package listener
+package udp
 
 import (
 	"net"
-	"ngio/channel"
+	"ngio/internal"
 	"ngio/logger"
 	"ngio/option"
+	"ngio/transport"
 )
 
-type UDPListener struct {
+type listener struct {
 	addr        *net.UDPAddr
-	ch          *channel.UDPChannel
+	ch          *channel
 	opts        *option.Options
 	log         logger.Logger
-	initializer channel.Initializer
+	initializer func(channel internal.IChannel)
 }
 
-func NewUDPListener(network, laddr string, opts *option.Options, initializer channel.Initializer) (*UDPListener, error) {
+func NewListener(network, laddr string, opts *option.Options, initializer func(channel internal.IChannel)) (*listener, error) {
 	addr, err := net.ResolveUDPAddr(network, laddr)
 	if err != nil {
 		return nil, err
@@ -25,7 +26,7 @@ func NewUDPListener(network, laddr string, opts *option.Options, initializer cha
 		return nil, option.ErrOptionIsNil
 	}
 
-	return &UDPListener{
+	return &listener{
 		addr:        addr,
 		ch:          nil,
 		opts:        opts,
@@ -34,9 +35,9 @@ func NewUDPListener(network, laddr string, opts *option.Options, initializer cha
 	}, nil
 }
 
-func (lsn *UDPListener) Serve() error {
+func (lsn *listener) Serve() error {
 	if lsn.addr == nil {
-		return ErrBindAddrIsNil
+		return transport.ErrBindAddrIsNil
 	}
 
 	conn, err := net.ListenUDP(lsn.addr.Network(), lsn.addr)
@@ -54,7 +55,7 @@ func (lsn *UDPListener) Serve() error {
 		return err
 	}
 
-	lsn.ch = channel.NewUDPChannel(conn)
+	lsn.ch = newChannel(conn)
 	if lsn.initializer != nil {
 		lsn.initializer(lsn.ch)
 	}
@@ -62,7 +63,7 @@ func (lsn *UDPListener) Serve() error {
 	return lsn.ch.Serve()
 }
 
-func (lsn *UDPListener) Shutdown() {
+func (lsn *listener) Shutdown() {
 	if lsn.ch == nil {
 		return
 	}

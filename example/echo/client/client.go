@@ -3,7 +3,6 @@ package main
 import (
 	"math"
 	"ngio"
-	"ngio/channel"
 	"ngio/codec"
 	"ngio/example/echo"
 	"ngio/option"
@@ -15,7 +14,7 @@ func main() {
 	clt := ngio.NewClient("tcp4", "", "localhost:9863").
 		Option(option.TCPNoDelay(true)).
 		Option(option.TCPKeepAlive(true)).
-		Channel(func(ch channel.Channel) {
+		Channel(func(ch ngio.Channel) {
 			ch.Pipeline().AddLast("encoder", codec.NewByteToMessageDecoderAdapter(
 				codec.NewLineBasedFrameDecoder(math.MaxUint8, true)))
 
